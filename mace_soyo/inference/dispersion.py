@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Shared helpers for the TorchSim D3(BJ) dispersion backend."""
+"""Shared ordinary D3(BJ) and LASP-D3 backends for ASE and TorchSim."""
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,72 @@ DEFAULT_D3_PARAMETERS_PATH = (
     Path(__file__).resolve().parents[1] / "utils" / "dftd3_parameters.pt"
 )
 _D3_PARAMETER_KEYS = ("rcov", "r4r2", "c6ab", "cn_ref")
+
+
+class LaspD3Correction:
+    """Single-system CUDA D3; cutoff is in Angstrom, as in ordinary D3."""
+
+    def __init__(self, *, device, dtype, cutoff, use_bj, functional_type, max_cache_size):
+        self.device = device
+        self.dtype = dtype
+        self.cutoff = float(cutoff)
+        self.use_bj = bool(use_bj)
+        self.functional_type = int(functional_type)
+        self.max_cache_size = int(max_cache_size)
+        if self.max_cache_size < 1:
+            raise ValueError("max_d3_cache_size must be at least 1.")
+        if self.functional_type not in range(6):
+            raise ValueError("LASP-D3 functional_type must be in [0, 5]: PBE, PBE0, B3LYP, BLYP, BP86, revPBE.")
+
+        from mace_soyo.utils.d3_cffi import D3Calculator
+
+        self._calculator_cls = D3Calculator
+        self._cache = OrderedDict()
+
+    def _get_calculator(self, elements):
+        # A handle belongs to one element sequence, not one set of coordinates.
+        key = (tuple(int(z) for z in elements), self.cutoff, self.use_bj, self.functional_type)
+        calc = self._cache.get(key)
+        if calc is not None:
+            self._cache.move_to_end(key)
+            return calc
+
+        # LASP converts coordinates/cells internally, but expects cutoffs in Bohr.
+        # Match the conversion constant used by its native library.
+        cutoff_bohr = self.cutoff / 0.52917726
+        calc = self._calculator_cls(
+            elements=list(key[0]),
+            max_length=len(key[0]),
+            cutoff_radius=cutoff_bohr,
+            cn_cutoff_radius=cutoff_bohr,
+            damping_type=int(self.use_bj),
+            functional_type=self.functional_type,
+        )
+        self._cache[key] = calc
+        while len(self._cache) > self.max_cache_size:
+            _, oldest = self._cache.popitem(last=False)
+            oldest.close()
+        return calc
+
+    def compute(self, z, positions, cell):
+        """Return E [1], F [N,3], stress [1,3,3] for a TTT row-vector cell."""
+        with torch.cuda.device(self.device):
+            calc = self._get_calculator(z.detach().cpu().tolist())
+            # The native LASP-D3 ABI uses FP32 geometry and int64 elements.
+            energy, forces, stress = calc.compute_torch(
+                positions.to(dtype=torch.float32).contiguous(),
+                z.to(dtype=torch.int64).contiguous(),
+                cell.to(dtype=torch.float32).contiguous(),
+            )
+        return (energy.to(dtype=self.dtype), forces.to(dtype=self.dtype),
+                stress.unsqueeze(0).to(dtype=self.dtype))
+
+    def close(self):
+        """Release cached handles; safe to call more than once."""
+        with torch.cuda.device(self.device):
+            for calc in self._cache.values():
+                calc.close()
+            self._cache.clear()
 
 
 def resolve_d3_parameters_path(path: str | Path | None = None) -> Path:

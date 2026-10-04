@@ -38,7 +38,7 @@ import torch
 from ase.calculators.calculator import Calculator, all_changes
 from mace_soyo.utils.neighbors import build_batched_neighbor_list
 
-from mace_soyo.inference.dispersion import make_torchsim_d3_model
+from mace_soyo.inference.dispersion import LaspD3Correction, make_torchsim_d3_model
 from mace_soyo.inference.aoti_utils import (
     select_head, load_metadata, register_custom_ops, resolve_torch_dtype,
     SPIN_CHARGE_INPUTS, spin_charge_from_atoms,
@@ -94,12 +94,21 @@ class MACESoyoCalculator(Calculator):
         d3_cutoff_radius: float = 46.4758,
         d3_params_path: str | Path | None = None,
         head: str | None = None,
+        use_laspd3: bool = False,
+        use_laspd3_BJ: bool = False,
+        functional_type: int = 0,
+        max_d3_cache_size: int = 16,
     ):
         super().__init__()
         self.package_path = str(package_path)
         self.device = resolve_cuda_device(device)
         self.profile = bool(profile)
         self.use_d3 = bool(use_d3)
+        self.use_laspd3 = bool(use_laspd3)
+        if self.use_d3 and self.use_laspd3:
+            raise ValueError("use_d3 and use_laspd3 are mutually exclusive.")
+        if use_laspd3_BJ and not self.use_laspd3:
+            raise ValueError("use_laspd3_BJ=True requires use_laspd3=True.")
 
         register_custom_ops()
         with torch.cuda.device(self.device):
@@ -110,6 +119,16 @@ class MACESoyoCalculator(Calculator):
         # AOTI fixes the input precision at export time; it is not a runtime option.
         self.dtype = resolve_torch_dtype(self.metadata["mace_soyo_aoti_dtype"])
 
+        self.laspd3_model = None
+        if self.use_laspd3:
+            self.laspd3_model = LaspD3Correction(
+                device=self.device,
+                dtype=self.dtype,
+                cutoff=d3_cutoff_radius,
+                use_bj=use_laspd3_BJ,
+                functional_type=functional_type,
+                max_cache_size=max_d3_cache_size,
+            )
         if self.use_d3:
             self.d3model = make_torchsim_d3_model(
                 a1=a1,
@@ -142,6 +161,8 @@ class MACESoyoCalculator(Calculator):
         print(f"[MACESoyoCalculator/AOTI] cutoff = {self.cutoff}")
         if self.use_d3:
             print("[MACESoyoCalculator/D3] backend = TorchSim D3(BJ)")
+        if self.use_laspd3:
+            print(f"[MACESoyoCalculator/D3] backend = LASP-D3; BJ = {bool(use_laspd3_BJ)}")
         print(f"[MACESoyoCalculator/AOTI] heads = {list(self.head_names)}; selected = {self.head!r}")
         print(f"[MACESoyoCalculator/AOTI] ABI = {self.metadata.get('mace_soyo_aoti_inputs', 'legacy six-input')} -> (energy, forces, stress)")
 
@@ -149,6 +170,11 @@ class MACESoyoCalculator(Calculator):
     def head(self) -> str:
         """Head selected at construction; create a new calculator to change it."""
         return self.head_names[self._head_id]
+
+    def close(self):
+        """Release cached LASP-D3 handles after optimization or MD."""
+        if self.laspd3_model is not None:
+            self.laspd3_model.close()
 
     def check_state(self, atoms, tol=1e-15):
         changes = super().check_state(atoms, tol=tol)
@@ -216,6 +242,8 @@ class MACESoyoCalculator(Calculator):
 
         if not self._conditioned and all(self.atoms.info.get(k) is not None for k in ("charge", "spin")):
             raise ValueError("This package has no charge/spin inputs. Export a use_spin_charge=True model.")
+        if self.use_laspd3 and not self.atoms.pbc.all():
+            raise ValueError("LASP-D3 only supports fully periodic (TTT) systems; use ordinary D3 for other PBC.")
 
         if self.profile:
             _maybe_sync(self.device)
@@ -248,7 +276,14 @@ class MACESoyoCalculator(Calculator):
         with torch.cuda.device(self.device), torch.inference_mode():
             energy, force, stress = self.aoti_model(*args)
 
-        if self.use_d3:
+        if self.use_laspd3:
+            d3_energy, d3_forces, d3_stress = self.laspd3_model.compute(
+                z, frac_pos @ cell, cell,
+            )
+            energy = energy.reshape(-1) + d3_energy.reshape(-1)
+            force = force + d3_forces
+            stress = stress.reshape(-1, 3, 3) + d3_stress
+        elif self.use_d3:
             import torch_sim as ts
 
             d3_atoms = self.atoms.copy()
