@@ -15,6 +15,9 @@ DEFAULT_D3_PARAMETERS_PATH = (
     Path(__file__).resolve().parents[1] / "utils" / "dftd3_parameters.pt"
 )
 _D3_PARAMETER_KEYS = ("rcov", "r4r2", "c6ab", "cn_ref")
+_LASP_BOHR_TO_ANGSTROM = 0.52917726
+# Expose LASP's original 46.4758-Bohr default in Angstrom for both adapters.
+DEFAULT_D3_CUTOFF_RADIUS = 46.4758 * _LASP_BOHR_TO_ANGSTROM
 
 
 class LaspD3Correction:
@@ -47,7 +50,7 @@ class LaspD3Correction:
 
         # LASP converts coordinates/cells internally, but expects cutoffs in Bohr.
         # Match the conversion constant used by its native library.
-        cutoff_bohr = self.cutoff / 0.52917726
+        cutoff_bohr = self.cutoff / _LASP_BOHR_TO_ANGSTROM
         calc = self._calculator_cls(
             elements=list(key[0]),
             max_length=len(key[0]),

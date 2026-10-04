@@ -38,7 +38,9 @@ import torch
 from ase.calculators.calculator import Calculator, all_changes
 from mace_soyo.utils.neighbors import build_batched_neighbor_list
 
-from mace_soyo.inference.dispersion import LaspD3Correction, make_torchsim_d3_model
+from mace_soyo.inference.dispersion import (
+    DEFAULT_D3_CUTOFF_RADIUS, LaspD3Correction, make_torchsim_d3_model,
+)
 from mace_soyo.inference.aoti_utils import (
     select_head, load_metadata, register_custom_ops, resolve_torch_dtype,
     SPIN_CHARGE_INPUTS, spin_charge_from_atoms,
@@ -91,7 +93,7 @@ class MACESoyoCalculator(Calculator):
         a2: float = 4.4407,
         s8: float = 0.7875,
         s6: float = 1.0,
-        d3_cutoff_radius: float = 46.4758,
+        d3_cutoff_radius: float = DEFAULT_D3_CUTOFF_RADIUS,
         d3_params_path: str | Path | None = None,
         head: str | None = None,
         use_laspd3: bool = False,

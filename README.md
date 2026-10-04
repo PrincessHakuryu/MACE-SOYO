@@ -252,9 +252,34 @@ one head throughout. The example relaxes positions at fixed cell. Match
 
 ASE and TorchSim support optional ordinary D3(BJ) with `use_d3=True`. Only enable
 it when the selected head's labels do not already include that dispersion
-correction. TorchSim additionally supports `use_laspd3=True` after building
+correction. Both interfaces also support `use_laspd3=True` after building
 `other-modules/LASP-D3-torchsim` and installing its shared library in `mace_soyo/utils/`;
 LASP-D3 requires TTT. Do not enable both D3 backends together.
+
+`d3_cutoff_radius` is in Å for both backends, independently of the neural-network
+cutoff. The default is 24.59394 Å, matching LASP-D3's original 46.4758 Bohr.
+LASP's energy and coordination-number cutoffs both use this radius; conversion
+to its native Bohr units is handled internally.
+
+For LASP-D3(BJ) in ASE:
+
+```python
+calc = MACESoyoCalculator(
+    package_path="/absolute/path/model.pt2",
+    head="salexmp",
+    use_laspd3=True,
+    use_laspd3_BJ=True,
+    functional_type=0,  # LASP-D3's PBE parameter set
+)
+atoms.calc = calc
+FIRE(atoms).run(fmax=0.05, steps=1000)
+calc.close()
+```
+
+LASP-D3 uses zero damping unless `use_laspd3_BJ=True`. Ordinary D3 parameters
+`a1`, `a2`, `s8`, `s6`, and
+`d3_params_path` apply only to `use_d3=True`; LASP-D3 selects its parameters with
+`functional_type` and `use_laspd3_BJ`.
 
 With CUDA (`nvcc`), a C++ compiler, a Fortran compiler and CMake >= 3.25.2:
 
@@ -327,4 +352,4 @@ CUDA_VISIBLE_DEVICES=0,1 OMP_NUM_THREADS=1 mpirun -np 2 lmp -k on g 2 -sf kk \
 MACE-SOYO's original code is licensed under the [MIT License](LICENSE).
 The vendored sources in `other-modules/LASP-D3-torchsim/` are adapted from
 [LipidL/LASP-D3](https://github.com/LipidL/LASP-D3) for GPU-accelerated
-dispersion calculations within TorchSim.
+dispersion calculations in ASE and TorchSim.

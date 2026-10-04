@@ -29,7 +29,9 @@ from mace_soyo.utils.neighbors import build_batched_neighbor_list
 from torch_sim.models.interface import ModelInterface
 from mace_soyo.utils.device import resolve_cuda_device
 
-from mace_soyo.inference.dispersion import LaspD3Correction, make_torchsim_d3_model
+from mace_soyo.inference.dispersion import (
+    DEFAULT_D3_CUTOFF_RADIUS, LaspD3Correction, make_torchsim_d3_model,
+)
 from mace_soyo.inference.aoti_utils import (
     select_head, load_metadata, register_custom_ops, resolve_torch_dtype, complete_runtime_cells, normalize_pbc,
     SPIN_CHARGE_INPUTS, spin_charge_from_atoms,
@@ -98,7 +100,7 @@ class MACESoyoTorchSimAOTIModel(ModelInterface):
         use_laspd3_BJ: bool = False,
         functional_type:int = 0,
         device: str | torch.device | None = None,
-        d3_cutoff_radius: float = 46.4758,
+        d3_cutoff_radius: float = DEFAULT_D3_CUTOFF_RADIUS,
         compute_forces: bool = True,
         compute_stress: bool = True,
         d3_params_path: str | Path | None = None,
