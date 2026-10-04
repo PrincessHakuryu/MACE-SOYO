@@ -254,12 +254,11 @@ ASE and TorchSim support optional ordinary D3(BJ) with `use_d3=True`. Only enabl
 it when the selected head's labels do not already include that dispersion
 correction. Both interfaces also support `use_laspd3=True` after building
 `other-modules/LASP-D3-torchsim` and installing its shared library in `mace_soyo/utils/`;
-LASP-D3 requires TTT. Do not enable both D3 backends together.
+LASP-D3 requires TTT(CELL IS NEEDED). Do not enable both D3 backends together.
 
 `d3_cutoff_radius` is in Å for both backends, independently of the neural-network
-cutoff. The default is 24.59394 Å, matching LASP-D3's original 46.4758 Bohr.
-LASP's energy and coordination-number cutoffs both use this radius; conversion
-to its native Bohr units is handled internally.
+cutoff. The default is 24.59394 Å. LASP-D3 is about 1.5-3x faster than D3 in nvalchemi-toolkit.
+But it needs to be manually installed.
 
 For LASP-D3(BJ) in ASE:
 
