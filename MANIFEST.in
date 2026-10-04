@@ -1,0 +1,7 @@
+include requirements.txt run_ddp.py
+include config/config.example.yml
+recursive-include config e0_*.yaml
+recursive-include example *.py in.lammps_mliap
+recursive-include other-modules/LASP-D3-torchsim *.md CMakeLists.txt *.h *.cuh *.cu *.cpp *.f90 *.py
+recursive-include mace_soyo/utils *.pt *.so *.so.*
+global-exclude __pycache__ *.py[cod]

@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "MACE-SOYO"
+version = "0.1.0"
+description = "Multi-head MACE-SOYO interatomic potential for training and inference"
+requires-python = ">=3.11"
+readme = "README.md"
+
+[project.scripts]
+mace-soyo-aoti-export = "mace_soyo.export.AOTI_export:main"
+mace-soyo-lammps-export = "mace_soyo.export.export_lammps_mliap:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["mace_soyo*"]
+
+[tool.setuptools.package-data]
+"mace_soyo.utils" = ["*.so", "*.so.*", "*.pt"]

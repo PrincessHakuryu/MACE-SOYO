@@ -1,0 +1,45 @@
+# One dataset entry per head. Replace the dataset paths before training.
+num_heads: 2
+use_spin_charge: false
+readout_hidden: 32
+datasets:
+  - name: omat_pbe
+    train_path: /path/to/omat24/train
+    valid_path: /path/to/omat24/val
+    pbc: true
+    e0_yaml_path: ./config/e0_omat.yaml
+  - name: salexmp
+    train_path: /path/to/salex-mptraj/train
+    valid_path: /path/to/salex-mptraj/val
+    pbc: true
+    e0_yaml_path: ./config/e0_salex.yaml
+
+compile_training: true
+model_dtype: float32    # Data, E0 and losses always use FP64.
+batch_size: 128
+train_percent: 0.95
+valid_percent: 0.05
+resume: false
+resume_path: ./model_pth/512_2_128_checkpoint_last.pt
+finetune: false
+finetune_path: ./model_pth/512_2_128_valid_1E1F1S.pth
+finetune_reset_e0: false
+max_lr: 0.001
+min_lr: 0.00001
+warmup_factor: 0.1
+warmup_epochs: 0.2
+wsd_decay_ratio: 0.65
+max_clip: 10.0
+epoch_num: 10
+cutoff: 6.0
+num_rbf: 16
+node_dim: 512
+num_layers: 2
+max_l: 1
+max_ell: 3
+use_zbl: true
+pair_dim: 128
+edge_weight_dim: 96
+E_factor: 1
+F_factor: 1
+S_factor: 1

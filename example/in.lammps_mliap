@@ -1,0 +1,34 @@
+# MACE-SOYO ML-IAP NVE example: atom types C, H, I, N, O, Pb.
+# Run from the repository root after exporting the .pt model.
+
+units          metal
+atom_style     atomic
+newton         on
+
+# Replace with a LAMMPS data file containing cell, positions and atom types.
+read_data      structure.data
+
+mass           1 12.010999996910238   # C
+mass           2 1.0079999997406976   # H
+mass           3 126.90446996735454   # I
+mass           4 14.006999996396779   # N
+mass           5 15.998999995884349   # O
+mass           6 207.19999994669897   # Pb
+
+# Model cutoff = 6 Angstrom; communication cutoff includes the neighbor skin.
+neighbor       1.0 bin
+neigh_modify   every 1 delay 0 check yes
+comm_modify    cutoff 7.0
+
+pair_style     mliap unified lammps.pt 0
+# Element order must match LAMMPS atom types 1..6 exactly.
+pair_coeff     * * C H I N O Pb
+
+# metal time unit is ps: 0.0005 ps = 0.5 fs.
+timestep       0.0005
+velocity       all create 300.0 4928459 mom yes rot yes dist gaussian
+fix            integrator all nve
+
+thermo         10
+thermo_style   custom step temp pe ke etotal press
+run            1000
