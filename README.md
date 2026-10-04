@@ -325,8 +325,6 @@ CUDA_VISIBLE_DEVICES=0,1 OMP_NUM_THREADS=1 mpirun -np 2 lmp -k on g 2 -sf kk \
 ## License
 
 MACE-SOYO's original code is licensed under the [MIT License](LICENSE).
-The vendored `other-modules/LASP-D3-torchsim/` sources originate from
-[LipidL/LASP-D3](https://github.com/LipidL/LASP-D3) and are not relicensed by this
-project's MIT license. The upstream repository does not currently specify a
-license; confirm redistribution permission with its authors before publishing
-those sources.
+The vendored sources in `other-modules/LASP-D3-torchsim/` are adapted from
+[LipidL/LASP-D3](https://github.com/LipidL/LASP-D3) for GPU-accelerated
+dispersion calculations within TorchSim.
