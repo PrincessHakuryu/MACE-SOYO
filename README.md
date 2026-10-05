@@ -4,18 +4,20 @@ A multi-head interatomic potential with training, AOTInductor (AOTI) inference f
 ASE/TorchSim, and a LAMMPS ML-IAP interface(in test). The current branch predicts energy,
 forces, and stress; molecular charge/spin conditioning is optional.
 
-This project aims to unlock the full potential of MACE-mh-1. 
+This project aims to unlock the full potential of MACE-mh-1, which is my favourite model.
+To me, Soyo evokes “a world of simplicity and peace,” capturing the spirit of MACE-mh-1: simple in design, 
+reliable in practice, and versatile in application. 
 Broadly speaking, MACE-SOYO offers an accuracy–speed trade-off between DPA4-Neo and DPA4-Mini.
 Training, AOTI export and inference require an NVIDIA CUDA GPU. CPU and other
 device types are rejected explicitly due to cuequivariance and nvalchemi-toolkit.
 
-This is an independently developed project with assistance from Codex. Initial
-benchmarks are encouraging; broader accuracy and stability validation is ongoing.
+This is an independently developed project with assistance from GPT-6 Astra. Initial
+benchmarks are encouraging; broader code validation is ongoing.
 
 ## Installation
 
 From the repository root (with PyTorch already installed):
-
+python>=3.12 is recommended.
 ```bash
 pip install -r requirements.txt
 ```
@@ -80,7 +82,7 @@ missing stress labels and nonperiodic structures are excluded from stress loss.
 Floating-point training data, E0 references, total-energy accumulation, and
 E/F/stress losses use FP64. Set `model_dtype: float32` (default) or `float64`
 to select network precision. Geometry, predicted forces/stress, and parameter
-gradients follow the network dtype; integer indices and masks keep their types.
+gradients follow the network dtype.
 Prepare an E0 YAML for each head before training:
 
 ```yaml
@@ -96,6 +98,10 @@ does not fit E0 automatically. To fit E0 externally using only training data:
 ```bash
 python -m mace_soyo.utils.sample_aselmdb --input /data/train --fit-e0 --e0-output /data/e0.yaml
 ```
+
+Training and the E0/sampling tool accept one file or discover `.aselmdb` shards
+recursively under a directory; the tool's JSON report records the input file list
+and shard count.
 
 To convert extxyz data into ASE LMDB:
 
@@ -251,13 +257,13 @@ one head throughout. The example relaxes positions at fixed cell. Match
 `model.device` and `model.dtype` when constructing a state.
 
 ASE and TorchSim support optional ordinary D3(BJ) with `use_d3=True`. Only enable
-it when the selected head's labels do not already include that dispersion
+it when the selected head's labels DO NOT already include that dispersion
 correction. Both interfaces also support `use_laspd3=True` after building
 `other-modules/LASP-D3-torchsim` and installing its shared library in `mace_soyo/utils/`;
 LASP-D3 requires TTT(CELL IS NEEDED). Do not enable both D3 backends together.
 
 `d3_cutoff_radius` is in Å for both backends, independently of the neural-network
-cutoff. The default is 24.59394 Å. LASP-D3 is about 1.5-3x faster than D3 in nvalchemi-toolkit.
+cutoff. The default is 24.59394 Å. LASP-D3 is up to 3x faster than D3 in nvalchemi-toolkit.
 But it needs to be manually installed.
 
 For LASP-D3(BJ) in ASE:
@@ -295,7 +301,8 @@ LASP-D3 source: [LipidL/LASP-D3](https://github.com/LipidL/LASP-D3).
 
 ## LAMMPS ML-IAP
 
-This interface is experimental; its correctness has not yet been fully validated.
+This interface is experimental and completely written by GPT-6 Astra; 
+its correctness has not yet been fully validated.
 
 This exports a fixed-head Python/PyTorch object (`lammps.pt`), not AOTI or
 TorchScript. Use a LAMMPS build with PYTHON, ML-IAP unified Python support, and

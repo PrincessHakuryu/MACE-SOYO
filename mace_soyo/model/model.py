@@ -78,7 +78,7 @@ class MACESoyo(torch.nn.Module):
         self.irreps_shls = list(range(self.max_ell + 1))
         self.irreps_sh = cue.Irreps("O3", "+".join(sh_parts))
         if self.use_zbl:
-            self.zbl = ZBLBasis()
+            self.zbl = ZBLBasis(cutoff=cutoff)
 
         energy_irreps = cue.Irreps("O3", f"{num_heads}x0e")
         self.z_emb = torch.nn.Embedding(num_elements, node_dim)

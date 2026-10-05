@@ -24,8 +24,16 @@ Fit E0 only on the sampled structures instead:
 import argparse
 import json
 import random
+import sys
 import time
 from pathlib import Path
+
+# Keep the standalone data tool independent of the package's inference imports.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from data_paths import discover_aselmdb_files
+else:
+    from .data_paths import discover_aselmdb_files
 
 import ase.db
 import numpy as np
@@ -33,7 +41,8 @@ import numpy as np
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--input", type=Path, required=True, help="Folder containing *.aselmdb files")
+    p.add_argument("--input", type=Path, required=True,
+                   help="One .aselmdb file or a folder searched recursively for *.aselmdb files")
     p.add_argument("--output", type=Path, help="Output folder for sampled *.aselmdb files")
     p.add_argument(
         "--sample-size",
@@ -56,10 +65,7 @@ def parse_args():
 
 
 def list_databases(input_dir):
-    files = sorted(input_dir.glob("*.aselmdb"))
-    if not files:
-        raise FileNotFoundError(f"No *.aselmdb files found in {input_dir}")
-    return files
+    return discover_aselmdb_files(input_dir)
 
 
 def count_databases(files):
@@ -220,6 +226,7 @@ def main():
         "input": str(args.input.resolve()),
         "output": str(args.output.resolve()) if args.output is not None else None,
         "files": len(files),
+        "input_files": [str(path.resolve()) for path in files],
         "frames": total,
         "sample_size": sampled if args.sample_size is not None else None,
         "seed": args.seed,

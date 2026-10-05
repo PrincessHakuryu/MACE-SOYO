@@ -20,6 +20,7 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
 from mace_soyo.utils.dataset_config import parse_pbc, resolve_data_path
+from mace_soyo.utils.data_paths import discover_aselmdb_files
 from mace_soyo.utils.load_extxyz import (
     build_e0_tensor_from_yaml,
     load_atom_energies_from_yaml,
@@ -54,16 +55,7 @@ class PBCDataset(Dataset):
 
     @staticmethod
     def _discover_db_files(path: Path) -> List[Path]:
-        if path.is_dir():
-            db_files = sorted(path.rglob("*.aselmdb"))
-        elif path.is_file():
-            db_files = [path]
-        else:
-            raise FileNotFoundError(f"LMDB path not found: {path}")
-
-        if not db_files:
-            raise FileNotFoundError(f"No .aselmdb files found under: {path}")
-        return db_files
+        return discover_aselmdb_files(path)
 
     @staticmethod
     def _close_one_db(db: Any) -> None:

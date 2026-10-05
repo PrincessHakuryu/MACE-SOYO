@@ -79,8 +79,14 @@ class ZBLBasis(torch.nn.Module):
     with a polynomial cutoff envelope.
     """
 
-    def __init__(self, p=6):
+    def __init__(self, p=6, *, cutoff=None):
         super().__init__()
+
+        self.cutoff = None if cutoff is None else float(cutoff)
+        max_zbl_range = 2.0 * float(max(ase.data.covalent_radii[1:]))
+        self._limit_zbl_range = (
+            self.cutoff is not None and self.cutoff < max_zbl_range
+        )
 
         self.register_buffer(
             "c",
@@ -132,6 +138,8 @@ class ZBLBasis(torch.nn.Module):
 
         v_edges = (14.3996 * Z_u_real * Z_v_real) / dist * phi
         r_max = self.covalent_radii[Z_u] + self.covalent_radii[Z_v]
+        if self._limit_zbl_range:
+            r_max = r_max.clamp_max(self.cutoff)
 
         envelope = PolynomialCutoff.calculate_envelope(dist, r_max, self.p)
         v_edges = 0.5 * v_edges * envelope
