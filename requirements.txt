@@ -1,22 +1,37 @@
-ase>=3.26
-ase-db-backends==0.11.0
-cffi>=1.16
-cuequivariance>=0.10.0
-cuequivariance-torch>=0.10.0
-cuequivariance-ops-cu12>=0.10.0
-cuequivariance-ops-torch-cu12>=0.10.0
-h5py>=3.15.1
-lmdb>=1.5
-numpy>=1.26,<3
-nvalchemi-toolkit-ops[torch]>=0.4.1
-opt_einsum_fx==0.1.4
-PyYAML>=6
-scipy>=1.11
-tables>=3.11.1
-torch>=2.10
+# Tested Soyo environment: Linux x86_64, Python 3.14.7, CUDA 12.6.
+# Package versions captured on 2026-10-05; install Python separately.
+# Run from the repository root: python -m pip install -r requirements.txt
+# The exact +cu126 pin selects the tested CUDA build of PyTorch.
+--extra-index-url https://download.pytorch.org/whl/cu126
+
+# CUDA, equivariant kernels, and neighbor lists
+torch==2.12.0+cu126
+cuequivariance==0.12.0
+cuequivariance-torch==0.12.0
+cuequivariance-ops-cu12==0.12.0
+cuequivariance-ops-torch-cu12==0.12.0
+nvalchemi-toolkit-ops[torch]==0.4.1
+warp-lang==1.13.0
+
+# Training and runtime interfaces
 torch-ema==0.3
 torch-geometric==2.7.0
 torch-sim-atomistic==0.6.1
-tqdm>=4.67
-warp-lang==1.13.0
+ase==3.29.0
+
+# Dataset storage
+ase-db-backends==0.11.0
+lmdb==2.3.0
+h5py==3.16.0
+tables==3.11.1
+
+# Numerical and utility packages
+numpy==2.5.3
+scipy==1.18.1
+PyYAML==6.0.3
+tqdm==4.70.1
+opt_einsum_fx==0.1.4
+cffi==2.1.1
+
+# Install MACE-SOYO from this checkout.
 .

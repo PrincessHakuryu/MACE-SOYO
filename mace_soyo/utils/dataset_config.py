@@ -43,7 +43,8 @@ def normalize_training_config(config):
         raise ValueError(f"model_dtype must be float32 or float64, got {model_dtype!r}")
     config["model_dtype"] = model_dtype
 
-    for key, default in (("num_heads", 1), ("readout_hidden", 64)):
+    for key, default in (("num_heads", 1), ("readout_hidden", 64),
+                         ("max_correlations", 3)):
         value = config.get(key, default)
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             raise ValueError(f"{key} must be a positive integer, got {value!r}")

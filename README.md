@@ -57,6 +57,7 @@ configuration is excluded from Git:
 ```yaml
 num_heads: 2
 readout_hidden: 64
+max_correlations: 3
 use_spin_charge: false
 datasets:
   - name: omat_pbe
@@ -76,6 +77,10 @@ checkpoints and AOTI packages. `pbc: true` means TTT; `false` means FFF and allo
 molecules without a cell. Periodic structures require a valid three-dimensional
 cell. An empty `valid_path` splits that dataset using `train_percent`,
 `valid_percent`, and `split_seed`.
+
+`max_correlations` sets the maximum symmetric-contraction degree in every
+interaction layer (default: 3). It is stored in checkpoints and restored for
+export. Keep it unchanged when resuming or fine-tuning an existing architecture.
 
 Energy and forces are required, in eV and eV/Å. Stress uses ASE's eV/Å³ convention;
 missing stress labels and nonperiodic structures are excluded from stress loss.

@@ -37,6 +37,7 @@ node_dim: 512
 num_layers: 2
 max_l: 1
 max_ell: 3
+max_correlations: 3  # Maximum symmetric-contraction degree in each layer.
 use_zbl: true
 pair_dim: 128
 edge_weight_dim: 96

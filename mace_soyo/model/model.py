@@ -194,7 +194,7 @@ class MACESoyo(torch.nn.Module):
             positions, self.cutoff, batch, lattice, pbc=pbc,
             batch_ptr=data.ptr,
         )
-        j, i = edge_index
+        j, i = edge_index # invert the edge_index given by alchemitoolkit in nvgraph
         vectors = positions[j] + shift - positions[i]
         volume = torch.linalg.det(cell).abs()
         safe_volume = torch.where(stress_enabled, volume, torch.ones_like(volume))

@@ -173,6 +173,7 @@ def main():
     num_rbf = config_data["num_rbf"]
     max_l = config_data.get("max_l", 1)
     max_ell = config_data.get("max_ell", 3)
+    max_correlations = config_data["max_correlations"]
     num_heads = config_data["num_heads"]
     readout_hidden = config_data["readout_hidden"]
     use_zbl = config_data.get("use_zbl", False)
@@ -186,6 +187,7 @@ def main():
     log.info(f"num_rbf: {num_rbf}")
     log.info(f"max_l: {max_l}")
     log.info(f"max_ell: {max_ell}")
+    log.info(f"max_correlations: {max_correlations}")
     log.info(f"num_heads: {num_heads}; head_names: {info['head_names']}")
     log.info(f"readout_hidden per head: {readout_hidden}; total: {readout_hidden * num_heads}")
     log.info("neighbor search: nvalchemi automatic selection")
@@ -204,7 +206,7 @@ def main():
         max_l=max_l,
         max_ell=max_ell,
         num_elements=config_data.get("num_elements", 105),
-        max_correlation=config_data.get("max_correlation", 3),
+        max_correlation=max_correlations,
         num_heads=num_heads,
         readout_hidden=readout_hidden,
         head_names=info["head_names"],
