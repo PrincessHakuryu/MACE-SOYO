@@ -76,8 +76,6 @@ def load_metadata(model):
         if key.startswith("nagasaki_aoti_"):
             metadata.setdefault(key.replace("nagasaki_aoti_", "mace_soyo_aoti_", 1), value)
             del metadata[key]
-    if str(metadata.get("mace_soyo_aoti_use_q", "0")).lower() in ("1", "true"):
-        raise ValueError("This runtime supports no-q packages only.")
     return metadata
 
 

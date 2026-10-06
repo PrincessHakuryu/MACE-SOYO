@@ -20,7 +20,7 @@ def efs_loss(predictions, data, criterion):
     if criterion.reduction != "none":
         raise ValueError("efs_loss requires criterion with reduction='none'.")
     energy, force, stress = predictions
-    energy = energy.double()
+    energy = energy.double() #energy is already FP64 in model.py, this is only for easy read.
     num_graphs = energy.numel()
     num_atoms = torch.bincount(data.batch, minlength=num_graphs).to(energy.dtype)
     e = criterion(energy.reshape(-1) / num_atoms, data.energy.double().reshape(-1) / num_atoms)

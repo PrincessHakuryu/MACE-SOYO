@@ -8,10 +8,9 @@ AOTI ABI:
     outputs: (energy, forces, stress)
 
 Design:
-    - No q path. This script raises immediately if checkpoint model_kwargs['use_q'] is True.
     - Neighbor-list construction stays outside the exported AOTI model.
     - The ASE runtime calculator does not load the checkpoint; it loads only the .pt2 package.
-    - Runtime metadata such as cutoff/use_q/ABI is embedded in the .pt2 package via
+    - Runtime metadata such as cutoff/ABI is embedded in the .pt2 package via
       the AOTInductor config key ``aot_inductor.metadata``. No sidecar JSON is written.
     - AOTI runtime constant folding is enabled by default.
     - always_keep_tensor_constants=True is enabled by default to avoid the known
@@ -161,7 +160,7 @@ def dump_graphs(prefix: str, fx_model: Optional[torch.fx.GraphModule] = None, ex
         Path(prefix + ".exported.py").write_text(exported.graph_module.code)
 
 
-def dynamic_shapes_for_noq_efs(
+def dynamic_shapes_for_efs(
     max_nodes: Optional[int] = None,
     max_edges: Optional[int] = None,
     max_graphs: int = 20000,
@@ -256,7 +255,7 @@ def main() -> None:
         cutoff=float(base_model.cutoff),
     )
 
-    # Trace with B=2 so torch.export does not specialize the graph count to 1.
+    # Trace with B=2 so torch.export does not specialize the graph count to 1. This is intentional due to torch.export's current limitations with dynamic shapes.
     example_args = tile_single_structure_export_inputs(example_args, num_graphs=2)
     if base_model.num_heads > 1:
         example_args[6][1] = 1
@@ -281,7 +280,7 @@ def main() -> None:
             f"dtype={tensor.dtype} device={tensor.device} stride={tensor.stride()}"
         )
 
-    dynamic_shapes = dynamic_shapes_for_noq_efs(
+    dynamic_shapes = dynamic_shapes_for_efs(
         max_nodes=args.max_nodes,
         max_edges=args.max_edges,
         max_graphs=args.max_graphs,
@@ -311,7 +310,6 @@ def main() -> None:
         "mace_soyo_aoti_inputs": " ".join(input_names),
         "mace_soyo_aoti_use_spin_charge": str(int(base_model.use_spin_charge)),
         "mace_soyo_aoti_outputs": "energy forces stress",
-        "mace_soyo_aoti_use_q": "0",
         "mace_soyo_aoti_cutoff": str(float(base_model.cutoff)),
         "mace_soyo_aoti_dtype": str(dtype).replace("torch.", ""),
         "mace_soyo_aoti_runtime_constant_folding": "1",
@@ -326,7 +324,7 @@ def main() -> None:
         "mace_soyo_aoti_max_graphs": str(args.max_graphs),
     }
     print(f"[export] saving ALL heads: {base_model.head_names}")
-
+    # The following is very important, "always_keep_tensor_constants", True" is necessary to avoid the cuet.Linear/AOTInductor lowering issue.
     inductor_configs = parse_inductor_configs(args.inductor_config)
     inductor_configs.setdefault("aot_inductor.use_runtime_constant_folding", True)
     inductor_configs.setdefault("always_keep_tensor_constants", True)

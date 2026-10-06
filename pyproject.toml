@@ -6,8 +6,34 @@ build-backend = "setuptools.build_meta"
 name = "MACE-SOYO"
 version = "0.1.0"
 description = "Multi-head MACE-SOYO interatomic potential for training and inference"
-requires-python = ">=3.11"
+requires-python = ">=3.12,<3.15"
 readme = "README.md"
+
+# Keep these versions aligned with the tested Soyo requirements.txt recipe.
+# The +cu126 PyTorch build requires the cu126 index in the pip command.
+dependencies = [
+    "torch==2.12.0+cu126",
+    "cuequivariance==0.12.0",
+    "cuequivariance-torch==0.12.0",
+    "cuequivariance-ops-cu12==0.12.0",
+    "cuequivariance-ops-torch-cu12==0.12.0",
+    "nvalchemi-toolkit-ops[torch]==0.4.1",
+    "warp-lang==1.13.0",
+    "torch-ema==0.3",
+    "torch-geometric==2.7.0",
+    "torch-sim-atomistic==0.6.1",
+    "ase==3.29.0",
+    "ase-db-backends==0.11.0",
+    "lmdb==2.3.0",
+    "h5py==3.16.0",
+    "tables==3.11.1",
+    "numpy==2.5.3",
+    "scipy==1.18.1",
+    "PyYAML==6.0.3",
+    "tqdm==4.70.1",
+    "opt_einsum_fx==0.1.4",
+    "cffi==2.1.1",
+]
 
 [project.scripts]
 mace-soyo-aoti-export = "mace_soyo.export.AOTI_export:main"

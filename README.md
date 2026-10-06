@@ -4,22 +4,28 @@ A multi-head interatomic potential with training, AOTInductor (AOTI) inference f
 ASE/TorchSim, and a LAMMPS ML-IAP interface(in test). The current branch predicts energy,
 forces, and stress; molecular charge/spin conditioning is optional.
 
-This project aims to unlock the full potential of MACE-mh-1, which is my favourite model.
+This project aims to unlock the full potential of MACE-mh-1, which is my favourite model.(https://github.com/ACEsuit/mace)
 To me, Soyo evokes “a world of simplicity and peace,” capturing the spirit of MACE-mh-1: simple in design, 
 reliable in practice, and versatile in application. 
+
+The main artitecture is the same as MACE-mh-1, while simple attention, Equivariant RMSnorm, code modification for speed and Spin&Charge embedding are added.
 Broadly speaking, MACE-SOYO offers an accuracy–speed trade-off between DPA4-Neo and DPA4-Mini.
 Training, AOTI export and inference require an NVIDIA CUDA GPU. CPU and other
 device types are rejected explicitly due to cuequivariance and nvalchemi-toolkit.
 
-This is an independently developed project with assistance from GPT-6 Astra. Initial
-benchmarks are encouraging; broader code validation is ongoing.
+This is an independently developed project with assistance from GPT-6 Astra to formalize the code. 
+Although all code except for LAMMPS ML-IAP is double checked by both Astra and me, and the matbench 
+results are encouraging, this is the first time for me to complete a single project in my spare time.
+Some minor bugs may still exist, it would be very appreciated if you report them. Thank You!
+
 
 ## Installation
 
-From the repository root (with PyTorch already installed):
-python>=3.12 is recommended.
+Python >=3.12,<3.15 is required by the pinned dependencies. 
+From the repository root:
+
 ```bash
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ## Checkpoints
@@ -34,8 +40,7 @@ MatPES-r2SCAN.
 
 ### Recommended PyTorch version
 
-We strongly recommend **PyTorch 2.12.0** for training. Install it before
-the project requirements.
+I strongly recommend **PyTorch 2.12.0** for training.
 
 Other PyTorch versions may have incompatibilities with `make_fx`, compiled
 force/stress training, or dynamic shapes. Disable compile_training in config.yml
@@ -72,21 +77,21 @@ datasets:
     e0_yaml_path: ./config/e0_salex.yaml
 ```
 
-`num_heads` must equal the number of dataset entries. Head names are stored in
+For a new or fine-tuned model, `num_heads` must equal the number of dataset
+entries. `datasets` declares the target model's head names and their order;
+checkpoint heads omitted from this list are not saved in the fine-tuned model.
+Head names are stored in
 checkpoints and AOTI packages. `pbc: true` means TTT; `false` means FFF and allows
 molecules without a cell. Periodic structures require a valid three-dimensional
 cell. An empty `valid_path` splits that dataset using `train_percent`,
 `valid_percent`, and `split_seed`.
 
-`max_correlations` sets the maximum symmetric-contraction degree in every
-interaction layer (default: 3). It is stored in checkpoints and restored for
-export. Keep it unchanged when resuming or fine-tuning an existing architecture.
 
 Energy and forces are required, in eV and eV/Å. Stress uses ASE's eV/Å³ convention;
 missing stress labels and nonperiodic structures are excluded from stress loss.
 Floating-point training data, E0 references, total-energy accumulation, and
 E/F/stress losses use FP64. Set `model_dtype: float32` (default) or `float64`
-to select network precision. Geometry, predicted forces/stress, and parameter
+to select network precision. Predicted forces/stress, and parameter
 gradients follow the network dtype.
 Prepare an E0 YAML for each head before training:
 
@@ -112,7 +117,7 @@ To convert extxyz data into ASE LMDB:
 
 ```bash
 python -m mace_soyo.utils.load_data \
-  --input_extxyz /data/input.extxyz \
+  --input_extxyz /data/input.extxyz \ #folder containing extxyz is also OK(recursive).
   --output_lmdb /data/train \
   --pbc True \
   --ignorewarn
@@ -134,18 +139,60 @@ CUDA_VISIBLE_DEVICES=0,1 torchrun --standalone --nproc_per_node=2 run_ddp.py
 Default checkpoints are saved in `model_pth/` beside `run_ddp.py`, regardless of
 the launch directory. The directory is created automatically on the first save.
 
+Use `--output-dir` (alias `--output_dir`) to save checkpoints for different runs
+in separate directories. Relative output paths are resolved from the launch
+directory, and `~` is expanded. Per-rank logs are also saved under that directory:
+
+```bash
+torchrun --nproc_per_node=2 run_ddp.py --config config/my_run.yml --output-dir ./runs/my_run
+```
+
+When resuming with `--output-dir`, `resume_path` in the YAML selects the input
+checkpoint; new best/last checkpoints are saved in the selected output directory.
+Use distinct output directories for runs that should not overwrite each other.
+With `resume: true`, `resume_path` must explicitly name the input checkpoint;
+a missing, empty or blank value causes an error and exits.Without `--output-dir`, 
+all last/best checkpoints are saved in `model_pth/` beside `run_ddp.py`; logs use `./logs/debug`.
+To continue saving in another run directory, select it with `--output-dir`.
+
 For a new run, set `resume: false` and `finetune: false`. For continuation, set
 `resume: true` and `resume_path`, keeping the same architecture and heads.
 New training checkpoints use format 4 and named readout layers; older training
 checkpoints are not supported. Previously exported compatible `.pt2` files are unchanged.
 For fine-tuning, set `finetune: true` and `finetune_path` with `resume: false`:
 
-- More heads: keep the backbone and rebuild all readouts and E0 values.
-- Fewer heads: retain heads selected by their existing names.
-- The same head count: a single head may be renamed; multiple heads must retain
-  the same name set. When retaining readouts, keep `readout_hidden` unchanged.
-- `finetune_reset_e0: true` reloads E0 from the configured YAML files; otherwise
-  retained heads use checkpoint E0. Fine-tuning starts a new optimizer/schedule.
+- Keep the shared backbone and initialize every target readout from a checkpoint
+  head. Matching names automatically inherit their own readout. With a single-head
+  checkpoint, any new target head automatically inherits that sole readout.
+- With a multihead checkpoint, each new name must specify `finetune_head` inside
+  its dataset entry to select the source head. This field can also override the
+  source for an existing name. Several target heads can copy the same source;
+  their readout weights can then train separately.
+- Keep `readout_hidden` unchanged. Transfer accounts for the change in Linear
+  input normalization when the head count changes.
+- `finetune_reset_e0: false` copies each target's E0 from its selected source head.
+  Set it to `true` to replace E0 using each target dataset's prepared YAML.
+  Fine-tuning starts a new optimizer/schedule; inherited weights remain trainable.
+
+For example, to fine-tune B and D from a checkpoint with heads `[A, B, C, D, E]`,
+set `num_heads: 2` and put B and D in `datasets`. They inherit the original B and D
+readouts; the saved model contains only `[B, D]`, at head IDs 0 and 1. To expand
+a single-head checkpoint `[A]` into `[A, B, C, D, E]`, declare those five dataset
+entries and set `num_heads: 5`. All five readouts start from A's weights.
+
+For a new name with a multihead source, choose its initializer explicitly:
+
+```yaml
+- name: new_task
+  finetune_head: omat_pbe  # Copy this checkpoint head's readout and, unless reset, E0.
+  train_path: /data/new_task/train
+  valid_path: /data/new_task/val
+  pbc: true
+  e0_yaml_path: ./config/e0_new_task.yaml
+```
+
+To resume a run, set `resume_path` to its saved checkpoint and keep the saved
+architecture and training dataset names, order and PBC settings.
 
 For molecular conditioning, set `use_spin_charge: true`. The loader reads graph
 labels `charge` and `spin` from ASE row data. Spin means multiplicity (singlet = 1).
@@ -184,6 +231,9 @@ exported for CUDA requires a compatible CUDA device.
 
 ## ASE
 
+The neighbor cutoff is read from the exported package. The calculator has no
+external `cutoff` option; re-export packages that lack cutoff metadata.
+
 ```python
 from ase.io import read, write
 from ase.optimize import FIRE
@@ -210,8 +260,7 @@ This optimizes atomic positions at fixed cell. For atomic and cell relaxation,
 pass `ase.filters.FrechetCellFilter(atoms)` to FIRE instead (periodic structures
 with a stress-capable head only).
 
-Choose an exact saved head name; invalid names report the available heads. A
-single-head package may omit `head`. `calc.head_names` lists the names. Each
+A single-head package may omit `head`. `calc.head_names` lists the names. Each
 calculator selects one head at construction. Boundary conditions come from
 `atoms.pbc`, not from the head name. Non-TTT stress is a zero placeholder.
 Outputs use eV, eV/Å, and eV/Å³.
@@ -259,7 +308,8 @@ write("relaxed.extxyz", final_state.to_atoms())
 Use `atoms_to_state` to retain `atoms.info['charge']` and `atoms.info['spin']` when
 present. The batch can mix labeled and unlabeled systems; one model instance uses
 one head throughout. The example relaxes positions at fixed cell. Match
-`model.device` and `model.dtype` when constructing a state.
+`model.device` and `model.dtype` when constructing a state. TorchSim 0.6.1 requires 
+the same PBC flags for all systems passed together to atoms_to_state.
 
 ASE and TorchSim support optional ordinary D3(BJ) with `use_d3=True`. Only enable
 it when the selected head's labels DO NOT already include that dispersion

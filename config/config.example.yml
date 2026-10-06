@@ -1,9 +1,13 @@
-# One dataset entry per head. Replace the dataset paths before training.
+# One dataset entry per training head. Replace the dataset paths before training.
+# Fresh and finetuned models require num_heads == len(datasets).
+# Finetune keeps only declared heads. Same names copy their old readouts;
+# new names copy the sole old head, or specify finetune_head for a multihead source.
 num_heads: 2
 use_spin_charge: false
 readout_hidden: 32
 datasets:
   - name: omat_pbe
+    # finetune_head: omat_pbe  # Optional source head override when finetune is true.
     train_path: /path/to/omat24/train
     valid_path: /path/to/omat24/val
     pbc: true
@@ -23,7 +27,7 @@ resume: false
 resume_path: ./model_pth/512_2_128_checkpoint_last.pt
 finetune: false
 finetune_path: ./model_pth/512_2_128_valid_1E1F1S.pth
-finetune_reset_e0: false
+finetune_reset_e0: false  # False: copy source-head E0. True: use each target's YAML E0.
 max_lr: 0.001
 min_lr: 0.00001
 warmup_factor: 0.1

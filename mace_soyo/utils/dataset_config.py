@@ -1,4 +1,4 @@
-"""Validate the one-dataset-per-head training contract before opening any DBs."""
+"""Validate dataset settings and map training heads to checkpoint heads."""
 
 from copy import deepcopy
 import os
@@ -34,9 +34,6 @@ def normalize_training_config(config):
     if not isinstance(config, dict):
         raise ValueError("Training config must be a YAML mapping.")
     config = deepcopy(config)
-    for key in ("use_q", "use_bec", "bec_calibration"):
-        if config.pop(key, False):
-            raise ValueError(f"{key} is not supported by this short-range multi-head model.")
 
     model_dtype = config.get("model_dtype", "float32")
     if model_dtype not in ("float32", "float64"):
@@ -54,8 +51,8 @@ def normalize_training_config(config):
     if config.get("train_path") or config.get("valid_path"):
         raise ValueError("Put train_path/valid_path inside datasets entries.")
     if not isinstance(datasets, list) or not datasets:
-        raise ValueError("datasets must be a non-empty list, with one entry per head.")
-    if len(datasets) != config["num_heads"]:
+        raise ValueError("datasets must be a non-empty list, with one entry per training head.")
+    if not config.get("resume") and len(datasets) != config["num_heads"]:
         raise ValueError(
             f"num_heads={config['num_heads']} does not match the number of datasets "
             f"(training folders)={len(datasets)}. One dataset entry must map to one head."
@@ -71,6 +68,10 @@ def normalize_training_config(config):
         if not isinstance(name, str) or not name.strip() or name in names:
             raise ValueError(f"Dataset names must be non-empty and unique, got {name!r}.")
         names.add(name)
+        if "finetune_head" in entry:
+            choice = entry["finetune_head"]
+            if not isinstance(choice, str) or not choice.strip():
+                raise ValueError(f"Dataset {name}: finetune_head must be a checkpoint head name.")
         train = entry.get("train_path")
         valid = entry.get("valid_path") or ""
         if not isinstance(train, str) or not train.strip():
@@ -82,8 +83,6 @@ def normalize_training_config(config):
         train_paths.add(train)
         entry.update(name=name, head_id=head_id, train_path=train, valid_path=valid)
         entry["pbc"] = parse_pbc(entry["pbc"])
-        if "e0_method" in entry or "e0_method" in config:
-            raise ValueError("e0_method has been removed; provide e0_yaml_path for each dataset.")
         if not isinstance(entry.get("e0_yaml_path"), str) or not entry["e0_yaml_path"].strip():
             raise ValueError(f"Dataset {name}: e0_yaml_path is required; prepare E0 before training.")
         normalized.append(entry)
@@ -92,7 +91,48 @@ def normalize_training_config(config):
     config.pop("train_path", None)
     config.pop("valid_path", None)
     config["head_names"] = [d["name"] for d in normalized]
-    config.pop("neighbor_method", None)
+    return config
+
+
+def align_checkpoint_heads(config, source_kwargs):
+    """Resolve finetune sources per target head; resume keeps saved head IDs."""
+    config = deepcopy(config)
+    source_names = list(source_kwargs["head_names"])
+    old_heads = source_kwargs["num_heads"]
+    if len(source_names) != old_heads or len(set(source_names)) != old_heads:
+        raise ValueError("Checkpoint head_names must contain num_heads unique names.")
+
+    active_names = [entry["name"] for entry in config["datasets"]]
+    if config.get("finetune", False):
+        # The target model contains exactly the heads declared by datasets.
+        config["num_heads"] = len(active_names)
+        config["head_names"] = active_names
+        for head_id, entry in enumerate(config["datasets"]):
+            choice = entry.get("finetune_head")
+            if choice is None:
+                if entry["name"] in source_names:
+                    choice = entry["name"]
+                elif old_heads == 1:
+                    choice = source_names[0]
+                else:
+                    raise ValueError(
+                        f"New head {entry['name']!r} must set finetune_head to a checkpoint "
+                        f"head name; available: {source_names}."
+                    )
+            if choice not in source_names:
+                raise ValueError(f"Unknown finetune head {choice!r}; available: {source_names}.")
+            entry["head_id"] = head_id
+            entry["finetune_head"] = choice
+            entry["finetune_source_head_id"] = source_names.index(choice)
+    else:
+        # resume
+        missing = set(active_names) - set(source_names)
+        if missing:
+            raise ValueError(f"Unknown training heads {sorted(missing)}; available: {source_names}.")
+        config["num_heads"] = old_heads
+        config["head_names"] = source_names
+        for entry in config["datasets"]:
+            entry["head_id"] = source_names.index(entry["name"])
     return config
 
 

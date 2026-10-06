@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import argparse
 import datetime
 import math
 import os
@@ -11,7 +12,7 @@ from torch_ema import ExponentialMovingAverage
 
 from mace_soyo.utils.load_data import dataloader
 from mace_soyo.model import MACESoyo
-from mace_soyo.utils.dataset_config import read_config
+from mace_soyo.utils.dataset_config import read_config, align_checkpoint_heads
 from mace_soyo.utils.logger import GpuLogger
 from mace_soyo.utils.device import resolve_cuda_device
 from mace_soyo.utils.loss import efs_loss, weighted_loss_score
@@ -91,8 +92,37 @@ def build_warmup_stable_decay_lambda(
     return lr_lambda, warmup_steps, stable_steps, decay_steps
 
 
+def _last_checkpoint_path(config, model_dir=None):
+    if model_dir is None:
+        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_pth")
+    stem = f"{config['node_dim']}_{config['num_layers']}_{config['pair_dim']}_checkpoint_last"
+    if config["num_heads"] > 1:
+        stem += f"_H{config['num_heads']}_R{config['readout_hidden']}"
+    return os.path.join(model_dir, stem + ".pt")
+
+
 def main():
-    config_data = read_config()
+    parser = argparse.ArgumentParser(description="Train MACE-SOYO with DDP.")
+    parser.add_argument(
+        "--config", "-c", metavar="FILE",
+        help="Training YAML path (default: MACE_SOYO_CONFIG or config/config.yml).",
+    )
+    parser.add_argument(
+        "--output-dir", "--output_dir", metavar="DIR",
+        help="Directory for saved checkpoints (default: model_pth beside run_ddp.py). "
+             "Relative paths use the launch directory; resume input stays in config resume_path.",
+    )
+    args = parser.parse_args()
+    model_dir = (
+        os.path.abspath(os.path.expanduser(args.output_dir))
+        if args.output_dir is not None
+        else os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_pth")
+    )
+    config_data = read_config(args.config)
+    if config_data.get("resume", False):
+        resume_input = config_data.get("resume_path")
+        if not isinstance(resume_input, str) or not resume_input.strip():
+            parser.error("resume=True requires a non-empty resume_path in the YAML config.")
     model_dtype = torch.float64 if config_data["model_dtype"] == "float64" else torch.float32
     # Construct weights and CUEQ constants in the selected precision from the
     # start; E0 and floating-point training data remain independently FP64.
@@ -108,7 +138,8 @@ def main():
     rank = int(dist.get_rank())
     world_size = dist.get_world_size()
 
-    log = GpuLogger(dist_id=rank, local_id=local_rank)
+    log_dir = os.path.join(model_dir, "logs", "debug") if args.output_dir is not None else "./logs/debug"
+    log = GpuLogger(dist_id=rank, local_id=local_rank, log_dir=log_dir)
     log.info(f"[rank] {rank}   [local_rank] {local_rank}")
     log.info(f"device: {device}")
     log.info(f"model_dtype: {model_dtype}; data, E0 and E/F/stress losses: torch.float64")
@@ -121,9 +152,9 @@ def main():
 
     log.info(f"seed_id: {seed_id}")
     batch_size = config_data["batch_size"]
-    cutoff = config_data["cutoff"]
+    
     log.info(f"batch_size: {batch_size}")
-    log.info(f"cutoff: {cutoff}")
+    
 
     resume = bool(config_data.get("resume", False))
     finetune = bool(config_data.get("finetune", False))
@@ -131,12 +162,18 @@ def main():
     if resume and finetune:
         raise ValueError("resume and finetune cannot both be True.")
     load_e0 = not resume
-    if finetune:
-        finetune_path = config_data["finetune_path"]
-        source = read_checkpoint(finetune_path)
-        old_heads = source["model_kwargs"]["num_heads"]
-        load_e0 = finetune_reset_e0 or config_data["num_heads"] > old_heads
+    if finetune or resume:
+        checkpoint_path = config_data["finetune_path"] if finetune else config_data["resume_path"]
+        source = read_checkpoint(checkpoint_path)
+        source_head_names = source["model_kwargs"]["head_names"]
+        config_data = align_checkpoint_heads(config_data, source["model_kwargs"])
+        if finetune:
+            finetune_path = checkpoint_path
+            load_e0 = finetune_reset_e0
         del source
+        log.info(f"Checkpoint heads: {source_head_names}; target model heads: {config_data['head_names']}")
+        if finetune:
+            log.info(f"Readout sources: {[(entry['name'], entry['finetune_head']) for entry in config_data['datasets']]}")
     log.info(f"E0 source: {'prepared YAML files' if load_e0 else 'checkpoint'}")
 
     start_time = datetime.datetime.now()
@@ -162,10 +199,10 @@ def main():
             f"[DATASET {dataset_info['head_id']}:{dataset_info['name']}] "
             f"pbc={''.join('T' if p else 'F' for p in dataset_info['pbc'])} "
             f"train={dataset_info['train_count']} valid={dataset_info['valid_count']} "
-            f"stress={'available TTT labels only' if all(dataset_info['pbc']) else 'disabled'} "
+            f"stress={'enabled' if all(dataset_info['pbc']) else 'disabled'} "
             f"E0={dataset_info['e0_yaml_path']} split={dataset_info['split_mode']}"
         )
-
+    cutoff = config_data["cutoff"]
     node_dim = config_data["node_dim"]
     edge_weight_dim = config_data["edge_weight_dim"]
     num_layers = config_data["num_layers"]
@@ -180,7 +217,8 @@ def main():
     E_factor = config_data["E_factor"]
     F_factor = config_data["F_factor"]
     S_factor = config_data["S_factor"]
-
+    use_spin_charge = config_data.get("use_spin_charge", False)
+    log.info(f"cutoff: {cutoff}")
     log.info(f"node_dim: {node_dim}")
     log.info(f"num_layers: {num_layers}")
     log.info(f"pair_dim: {pair_dim}")
@@ -196,6 +234,8 @@ def main():
     log.info(f"Config E_factor: {E_factor}")
     log.info(f"Config F_factor: {F_factor}")
     log.info(f"Config S_factor: {S_factor}")
+    log.info(f"Config  use_spin_charge: {use_spin_charge}")
+
     model_kwargs = dict(
         cutoff=cutoff,
         node_dim=node_dim,
@@ -211,16 +251,20 @@ def main():
         readout_hidden=readout_hidden,
         head_names=info["head_names"],
         use_zbl=use_zbl,
-        use_spin_charge=bool(config_data.get("use_spin_charge", False)),
+        use_spin_charge=use_spin_charge,
     )
 
-    raw_model = MACESoyo(E_0=info["E_0"], **model_kwargs)
+    # Finetune maps checkpoint E0 columns to target heads, then optionally replaces them from YAML.
+    raw_model = MACESoyo(E_0=None if finetune else info["E_0"], **model_kwargs)
     raw_model = raw_model.to(device)
-
+    # The logic of finetune is similiar with mace-mh-1, which a new head's readout is initialized from a checkpoint head's readout, and the E0 is optionally replaced by YAML.
+    # This is different from the logic of DPA4, which a new head's readout can be random initialized.
+    # The code in finetune is specified to the name of neural network layers, so you need to change both finetune code and the name of readout layers.
     if finetune:
         load_finetune_weights(
             raw_model=raw_model, ckpt_path=finetune_path, device=device,
             reset_e0=finetune_reset_e0, new_e0=info["E_0"],
+            source_head_ids=[entry["finetune_source_head_id"] for entry in info["datasets"]],
         )
         log.info("Finetune weights loaded; initializing optimizer and EMA from these weights.")
 
@@ -285,22 +329,20 @@ def main():
     log.info(f"Total parameters: {sum(p.numel() for p in raw_model.parameters())}")
     log.info(f"Trainable parameters: {sum(p.numel() for p in raw_model.parameters() if p.requires_grad)}")
     log.info(f"Learning-rate source: {lr_source_name}")
-
+    # simplified huberloss compared with original mace.
     criterion = torch.nn.HuberLoss(delta=0.01, reduction="none").to(device)
     log.info(f"criterion: {criterion}")
     loss_factors = (E_factor, F_factor, S_factor)
     loss_weights = torch.tensor(loss_factors, dtype=torch.float64, device=device)
 
-    # Default checkpoints live next to this script, independent of the launch directory.
-    model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_pth")
+    # Resolve all checkpoint output paths independently of the resume input.
     train_path = os.path.join(model_dir, f"{node_dim}_{num_layers}_{pair_dim}_train_{E_factor}E{F_factor}F{S_factor}S.pth")
     valid_path = os.path.join(model_dir, f"{node_dim}_{num_layers}_{pair_dim}_valid_{E_factor}E{F_factor}F{S_factor}S.pth")
-    resume_path = os.path.join(model_dir, f"{node_dim}_{num_layers}_{pair_dim}_checkpoint_last.pt")
+    last_checkpoint_path = _last_checkpoint_path(config_data, model_dir)
     if num_heads > 1:
         suffix = f"_H{num_heads}_R{readout_hidden}"
         train_path = train_path.replace(".pth", suffix + ".pth")
         valid_path = valid_path.replace(".pth", suffix + ".pth")
-        resume_path = resume_path.replace(".pt", suffix + ".pt")
     log.info(f"train_path: {train_path}")
     log.info(f"valid_path: {valid_path}")
     max_clip = config_data["max_clip"]
@@ -338,14 +380,12 @@ def main():
     best_valid = float("inf")
     start_epoch = 0
 
-    if resume:
-        resume_path = config_data.get("resume_path") or resume_path
     log.info(f"resume: {resume}; finetune: {finetune}")
-    log.info(f"save & resume_path: {resume_path}")
+    log.info(f"save checkpoint: {last_checkpoint_path}")
 
     if resume:
-        log.info(f"resume checkpoint: {resume_path}")
-        if not os.path.exists(resume_path):
+        log.info(f"resume checkpoint: {checkpoint_path}")
+        if not os.path.exists(checkpoint_path):
             raise Exception("Checkpoint required for retrain does not exist.")
 
         start_epoch, best_train, best_valid = load_checkpoint(
@@ -353,7 +393,7 @@ def main():
             optimizers=optimizers,
             schedulers=schedulers,
             ema=ema,
-            ckpt_path=resume_path,
+            ckpt_path=checkpoint_path,
             device=device,
             log=log,
             dataset_metadata=info["datasets"],
@@ -365,7 +405,7 @@ def main():
 
     if config_data.get("compile_training", False):
         from mace_soyo.utils.check_compile_grad import check_compile_grad
-        check_compile_grad(efs_model)
+        check_compile_grad(efs_model) #only check the training process, validation check is unnecessary because it is included in training check.
 
     # Run the startup gradient check before DDP installs its backward hooks.
     ddp_model = DDP(
@@ -422,7 +462,7 @@ def main():
         train_report = train_metrics.compute()
         dist.all_reduce(train_loss_sums)
         dist.all_reduce(train_label_counts)
-        train_score = weighted_loss_score(train_loss_sums, train_label_counts, loss_factors)
+        train_score = weighted_loss_score(train_loss_sums, train_label_counts, loss_factors) #Epoch level train loss
         is_best_train = train_score < best_train
         if is_best_train:
             best_train = train_score
@@ -462,23 +502,24 @@ def main():
                 if is_best_valid:
                     best_valid = valid_score
                     if rank == 0:
-                        save_best_checkpoint(raw_model, valid_path, model_kwargs, info["datasets"])
+                        save_best_checkpoint(raw_model, valid_path, model_kwargs, info["datasets"]) # this is pth saving.
                 log_epoch_metrics(
                     log, valid_report, phase="VALID", epoch=epoch, score=valid_score,
                     lr=last_train_lr, elapsed=datetime.datetime.now() - start_time, is_best=is_best_valid,
                 )
 
         if rank == 0:
-            save_checkpoint(
+            save_checkpoint( 
                 epoch=epoch, raw_model=raw_model, optimizers=optimizers, schedulers=schedulers,
-                ema=ema, best_train=best_train, best_valid=best_valid, save_path=resume_path,
+                ema=ema, best_train=best_train, best_valid=best_valid, save_path=last_checkpoint_path,
                 model_kwargs=model_kwargs, dataset_metadata=info["datasets"],
                 steps_per_epoch=steps_per_epoch, batch_size=batch_size,
-            )
+            ) # this is pt saving.
         dist.barrier(device_ids=[local_rank])
 
     log.info(f"Training completed! Reached max epoch_num: {epoch_num}")
     log.info(f"Total training time: {datetime.datetime.now() - run_time}")
+    log.info(f"JESUS CHRIST THE SAME YESTERDAY, TODAY, AND FOREVER, THE SAME IS TRUE FOR ALL EPOCHS.")
     dist.destroy_process_group()
     for handler in log.handlers:
         handler.close()

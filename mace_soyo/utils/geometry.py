@@ -20,5 +20,5 @@ def atoms_geometry(atoms, *, pbc=None):
     if abs(np.linalg.det(cell)) < 1e-10:
         raise ValueError("Cell vectors are linearly dependent.")
     frac = np.linalg.solve(cell.T, positions.T).T
-    frac[:, axes] %= 1.0
+    frac[:, axes] %= 1.0 #DO NOT wrap nonperiodic axes; they are not physically meaningful.
     return frac, cell, axes

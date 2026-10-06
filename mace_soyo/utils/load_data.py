@@ -35,7 +35,7 @@ warnings.filterwarnings(
 
 
 class PBCDataset(Dataset):
-    def __init__(self, lmdb_path: str, *, pbc, head_id=0,
+    def __init__(self, lmdb_path: str, pbc, head_id=0,
                  num_elements=105, e0_elements=None):
         self.lmdb_path = Path(lmdb_path)
         self.pbc = parse_pbc(pbc)
@@ -76,7 +76,7 @@ class PBCDataset(Dataset):
         for fp in db_files:
             db = ase.db.connect(str(fp), readonly=True, use_lock_file=False)
             try:
-                ids = [int(x) for x in list(db.ids)]
+                ids = [int(x) for x in db.ids]
             finally:
                 PBCDataset._close_one_db(db)
             db_ids.append(ids)
@@ -268,7 +268,7 @@ class DistributedEvalSampler(Sampler):
         pass
 
 
-def dataloader(batch_size, percent, *, config, ddp=False, rank=0, seed=42, load_e0=True):
+def dataloader(batch_size, percent, config, ddp=False, rank=0, seed=42, load_e0=True):
     """Read prepared E0 YAMLs; resume/retained-E0 finetuning use checkpoint E0."""
     train_sets, valid_sets, e0_heads, head_info = [], [], [], []
     resolved_train_paths = [resolve_data_path(d["train_path"]) for d in config["datasets"]]

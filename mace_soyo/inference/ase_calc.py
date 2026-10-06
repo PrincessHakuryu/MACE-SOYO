@@ -18,10 +18,10 @@ NOT construct MACESoyo. The checkpoint is only used by
 mace_soyo/export/AOTI_export.py when
 building/checking the .pt2 package.
 
-Runtime metadata such as cutoff/use_q/ABI is embedded inside the .pt2 package via
+Runtime metadata such as cutoff/ABI is embedded inside the .pt2 package via
 the AOTInductor config key ``aot_inductor.metadata``.  No sidecar JSON file is
-required.  cutoff=... is only a manual fallback for packages that do not
-contain embedded metadata.
+required. The neighbor cutoff is read from the package and cannot be overridden.
+Packages without embedded cutoff metadata must be re-exported.
 
 This runtime intentionally supports only the new batched AOTI ABI. Old 5-input
 packages should be re-exported with the batched exporter.
@@ -85,7 +85,6 @@ class MACESoyoCalculator(Calculator):
     def __init__(
         self,
         package_path: str,
-        cutoff: float | None = None,
         device: str = "cuda:0",
         profile: bool = False,
         use_d3: bool = False,
@@ -147,13 +146,11 @@ class MACESoyoCalculator(Calculator):
         self._head_tensor = torch.tensor([self._head_id], device=self.device, dtype=torch.long)
         self._conditioned = tuple(self.metadata.get("mace_soyo_aoti_inputs", "").split()) == SPIN_CHARGE_INPUTS
 
-        if cutoff is None:
-            cutoff = self.metadata.get("mace_soyo_aoti_cutoff")
+        cutoff = self.metadata.get("mace_soyo_aoti_cutoff")
         if cutoff is None:
             raise ValueError(
-                "cutoff is required to build the PBC neighbor list. The .pt2 package does not appear to contain "
-                "MACE-SOYO embedded AOTI metadata. Re-export with "
-                "export/AOTI_export.py or pass cutoff=... manually."
+                "The .pt2 package is missing embedded cutoff metadata. "
+                "Re-export with mace_soyo.export.AOTI_export."
             )
         self.cutoff = float(cutoff)
 

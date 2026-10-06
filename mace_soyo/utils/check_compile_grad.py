@@ -100,7 +100,7 @@ def check_compile_grad(compiled_model):
     The checked train callable stays in the adapter's cache for normal training.
     This is a startup regression check, not a guarantee for every future shape.
     """
-    model = compiled_model.model
+    model = compiled_model.model #This is the original model, not the compiled wrapper.
     device, dtype = model.z_emb.weight.device, model.z_emb.weight.dtype
     named_parameters = [(name, p) for name, p in model.named_parameters() if p.requires_grad]
     parameters = [p for _, p in named_parameters]
@@ -127,7 +127,7 @@ def check_compile_grad(compiled_model):
                         reference, parameters, grad_outputs=grad_outputs, allow_unused=True,
                     )
                     reference_outputs = tuple(x.detach() for x in reference_outputs)
-                    del reference
+                    del reference #GPT-6 Astra prefer to del the useless matrix or variant, I thought it was OK.
 
                     outputs = compiled_model.forward_tensors(*args)
                     _check_outputs(outputs, reference_outputs, atoms_per_graph, dtype)
@@ -150,7 +150,8 @@ def check_compile_grad(compiled_model):
             f"Compiled-training startup check failed with torch {torch.__version__} "
             f"on {device}. The compiler/dependency combination may be incompatible. "
             "Check the original error below (including possible CUDA/OOM errors). "
-            "Try the recommended PyTorch 2.12.0+cu126 environment, or set "
+            "This phenomenon is likely possible with different pytorch versions, CUDA versions, or compiler backends. "
+            "Try the recommended PyTorch 2.12.0 environment, or set "
             "compile_training: false. If it persists, submit an issue with this log "
             "and your dependency versions, or use an AI coding tool to investigate. "
             f"Original error: {type(error).__name__}: {error}"

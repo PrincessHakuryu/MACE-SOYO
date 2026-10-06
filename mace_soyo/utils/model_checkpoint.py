@@ -76,6 +76,11 @@ def align_resume_schedulers(schedulers, completed_epochs, steps_per_epoch, log):
 def load_checkpoint(raw_model, optimizers, schedulers, ema, ckpt_path, device,
                     log, dataset_metadata, steps_per_epoch, batch_size):
     log.info(f"Loading checkpoint from {ckpt_path} ...")
+    log.warning(
+        "[resume] Please confirm that the old and new datasets and hyperparameters "
+        "are consistent (loss weights, cutoff, learning rate/schedule, batch size, etc.). "
+        "Saved best_train/best_valid scores are retained."
+    )
     checkpoint = read_checkpoint(ckpt_path, device)
     saved_kwargs = checkpoint["model_kwargs"]
     if saved_kwargs["cutoff"] != raw_model.cutoff:
@@ -111,9 +116,51 @@ def load_checkpoint(raw_model, optimizers, schedulers, ema, ckpt_path, device,
     return start_epoch, checkpoint["best_train"], checkpoint["best_valid"]
 
 
-def load_finetune_weights(raw_model, ckpt_path, device, reset_e0=False, new_e0=None):
+def _copy_readout_heads(source_state, target_state, raw_model, old_heads, head_map):
+    """Copy selected readout blocks; rebuild buffers for the target head count."""
+    state = {name: value for name, value in target_state.items()
+             if name.startswith("energy_readouts.")}
+    new_heads = raw_model.num_heads
+    for layer_index in range(raw_model.num_layers):
+        final = layer_index == raw_model.num_layers - 1
+        prefix = f"energy_readouts.{layer_index}."
+        key = prefix + ("linear_in.weight" if final else "weight")
+        width = raw_model.readout_hidden if final else 1
+        # CUEQ scalar Linear weights use flattened [input, output] order.
+        old_weight = source_state[key].reshape(raw_model.node_dim, old_heads, width)
+        new_weight = target_state[key].clone().reshape(raw_model.node_dim, new_heads, width)
+        for new_id, old_id in enumerate(head_map):
+            new_weight[:, new_id, :].copy_(old_weight[:, old_id, :])
+        state[key] = new_weight.reshape_as(target_state[key])
+
+    prefix = f"energy_readouts.{raw_model.num_layers - 1}."
+    width = raw_model.readout_hidden
+    # CUEQ divides by sqrt(input width). Compensate for changing total head
+    # width; head masks keep each selected branch independent of other heads.
+    normalization_scale = (new_heads / old_heads) ** 0.5
+    for layer_name, output_width in (("linear_hidden", width), ("linear_out", 1)):
+        key = prefix + layer_name + "."
+        old_weight = source_state[key + "weight"].reshape(old_heads, width, old_heads, output_width)
+        new_weight = target_state[key + "weight"].clone().reshape(new_heads, width, new_heads, output_width)
+        for new_in, old_in in enumerate(head_map):
+            for new_out, old_out in enumerate(head_map):
+                block = old_weight[old_in, :, old_out, :].to(new_weight)
+                new_weight[new_in, :, new_out, :].copy_(block * normalization_scale)
+        state[key + "weight"] = new_weight.reshape_as(target_state[key + "weight"])
+        old_bias = source_state[key + "bias"].reshape(old_heads, output_width)
+        new_bias = target_state[key + "bias"].clone().reshape(new_heads, output_width)
+        for new_id, old_id in enumerate(head_map):
+            new_bias[new_id].copy_(old_bias[old_id])
+        state[key + "bias"] = new_bias.reshape_as(target_state[key + "bias"])
+    return state
+
+
+@torch.no_grad()
+def load_finetune_weights(raw_model, ckpt_path, device, reset_e0=False, new_e0=None,
+                          e0_head_ids=None, source_head_ids=None):
+    """Initialize every declared target head from a selected checkpoint head."""
     checkpoint = read_checkpoint(ckpt_path, device)
-    state = checkpoint["model_state_dict"]
+    source_state = checkpoint["model_state_dict"]
     source_kwargs = checkpoint["model_kwargs"]
     for key in ("cutoff", "node_dim", "num_layers", "num_elements", "max_l", "max_ell", "use_zbl", "use_spin_charge"):
         if source_kwargs[key] != getattr(raw_model, key):
@@ -121,61 +168,59 @@ def load_finetune_weights(raw_model, ckpt_path, device, reset_e0=False, new_e0=N
                              f"{source_kwargs[key]!r} -> {getattr(raw_model, key)!r}.")
     old_heads = source_kwargs["num_heads"]
     new_heads = raw_model.num_heads
-    target_state = raw_model.state_dict()
-    growing = new_heads > old_heads
-    reset_e0 = reset_e0 or growing
-    if reset_e0 and new_e0 is None:
-        raise ValueError("Rebuilding E0 requires references from the current datasets.")
-
-    if growing:
-        # A larger head set starts with new readouts and E0; only the backbone transfers.
-        state = {name: value for name, value in state.items()
-                 if not name.startswith("energy_readouts.") and name != "E0"}
-        state.update({name: value for name, value in target_state.items()
-                      if name.startswith("energy_readouts.")})
-        state["E0"] = new_e0.to(raw_model.E0).reshape_as(raw_model.E0)
-        print(f"Finetune heads {old_heads} -> {new_heads}: reset all readouts and E0.")
-        return raw_model.load_state_dict(state, strict=True)
-
-    if source_kwargs["readout_hidden"] != raw_model.readout_hidden:
-        raise ValueError("Retaining readouts requires unchanged readout_hidden.")
     source_names = source_kwargs["head_names"]
-    if old_heads == 1:
-        selected = [0]  # A single head may be renamed.
+    if len(source_names) != old_heads or len(set(source_names)) != old_heads:
+        raise ValueError("Checkpoint head_names must contain num_heads unique names.")
+    if source_head_ids is None:
+        head_map = []
+        for name in raw_model.head_names:
+            if name in source_names:
+                head_map.append(source_names.index(name))
+            elif old_heads == 1:
+                head_map.append(0)
+            else:
+                raise ValueError(f"No source for finetune head {name!r}; specify source_head_ids "
+                                 f"from checkpoint heads {source_names}.")
     else:
-        missing = set(raw_model.head_names) - set(source_names)
-        if missing:
-            raise ValueError(f"Unknown finetune heads {sorted(missing)}; available: {source_names}.")
-        selected = [source_names.index(name) for name in raw_model.head_names]
-    indices = torch.tensor(selected, device=state["E0"].device, dtype=torch.long)
-    state["E0"] = (new_e0.to(raw_model.E0).reshape_as(raw_model.E0) if reset_e0
-                   else state["E0"].index_select(1, indices))
+        head_map = list(source_head_ids)
+    if len(head_map) != new_heads or any(
+        isinstance(old_id, bool) or not isinstance(old_id, int) or old_id < 0 or old_id >= old_heads
+        for old_id in head_map
+    ):
+        raise ValueError(f"Invalid finetune source head IDs: {head_map}.")
+    if source_kwargs["readout_hidden"] != raw_model.readout_hidden:
+        raise ValueError("Inheriting readouts requires unchanged readout_hidden.")
 
-    for layer_index in range(raw_model.num_layers):
-        final = layer_index == raw_model.num_layers - 1
-        prefix = f"energy_readouts.{layer_index}."
-        key = prefix + ("linear_in.weight" if final else "weight")
-        output_width = raw_model.readout_hidden if final else 1
-        # CUEQ stores scalar Linear weights in flattened [input, output] order.
-        weight = state[key].reshape(raw_model.node_dim, old_heads, output_width)
-        state[key] = weight.index_select(1, indices).reshape_as(target_state[key])
-
-    prefix = f"energy_readouts.{raw_model.num_layers - 1}."
-    width = raw_model.readout_hidden
-    for layer_name, output_width in (("linear_hidden", width), ("linear_out", 1)):
-        key = prefix + layer_name + "."
-        weight = state[key + "weight"].reshape(old_heads, width, old_heads, output_width)
-        weight = weight.index_select(0, indices).index_select(2, indices)
-        # Preserve effective weights when CUEQ's input-width normalization changes.
-        weight = weight * (new_heads / old_heads) ** 0.5
-        state[key + "weight"] = weight.reshape_as(target_state[key + "weight"])
-        bias = state[key + "bias"].reshape(old_heads, output_width)
-        state[key + "bias"] = bias.index_select(0, indices).reshape_as(target_state[key + "bias"])
-    for name, value in raw_model.named_buffers():
-        if name.startswith("energy_readouts."):
-            state[name] = value
-    print(f"Finetune heads {old_heads} -> {new_heads}: {raw_model.head_names}; "
-          f"E0={'rebuilt' if reset_e0 else 'retained'}.")
+    # Copy backbone weights; readout buffers are rebuilt for the target sizes.
+    target_state = raw_model.state_dict()
+    state = {name: value for name, value in source_state.items()
+             if not name.startswith("energy_readouts.") and name != "E0"}
+    state.update(_copy_readout_heads(source_state, target_state, raw_model, old_heads, head_map))
+    indices = torch.tensor(head_map, device=raw_model.E0.device, dtype=torch.long)
+    state["E0"] = source_state["E0"].to(raw_model.E0).index_select(1, indices)
+    if reset_e0:
+        if new_e0 is None:
+            raise ValueError("finetune_reset_e0=True requires prepared YAML E0 references.")
+        head_ids = list(range(new_heads)) if e0_head_ids is None else list(e0_head_ids)
+        if not head_ids or len(set(head_ids)) != len(head_ids) or any(
+            isinstance(head_id, bool) or not isinstance(head_id, int)
+            or head_id < 0 or head_id >= new_heads for head_id in head_ids
+        ):
+            raise ValueError(f"Invalid E0 head IDs: {head_ids}.")
+        references = new_e0.to(raw_model.E0)
+        if references.ndim == 1 and len(head_ids) == 1:
+            references = references[:, None]
+        expected_shape = (raw_model.num_elements, len(head_ids))
+        if references.shape != expected_shape:
+            raise ValueError(f"Training E0 must have shape {expected_shape}, got {tuple(references.shape)}.")
+        if not torch.isfinite(references).all():
+            raise ValueError("E0 references must be finite.")
+        indices = torch.tensor(head_ids, device=raw_model.E0.device, dtype=torch.long)
+        state["E0"].index_copy_(1, indices, references)
+    sources = {name: source_names[old_id]
+               for name, old_id in zip(raw_model.head_names, head_map)}
+    print(f"Finetune heads {old_heads} -> {new_heads}: readout sources={sources}; "
+          f"E0={'rebuilt from YAML' if reset_e0 else 'copied from source heads'}.")
     return raw_model.load_state_dict(state, strict=True)
 
 
