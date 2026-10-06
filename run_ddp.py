@@ -234,7 +234,7 @@ def main():
     log.info(f"Config E_factor: {E_factor}")
     log.info(f"Config F_factor: {F_factor}")
     log.info(f"Config S_factor: {S_factor}")
-    log.info(f"Config  use_spin_charge: {use_spin_charge}")
+    log.info(f"Config use_spin_charge: {use_spin_charge}")
 
     model_kwargs = dict(
         cutoff=cutoff,
