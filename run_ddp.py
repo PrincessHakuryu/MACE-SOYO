@@ -143,7 +143,6 @@ def main():
     log.info(f"[rank] {rank}   [local_rank] {local_rank}")
     log.info(f"device: {device}")
     log.info(f"model_dtype: {model_dtype}; data, E0 and E/F/stress losses: torch.float64")
-    log.info(f"world_size: {world_size}")
 
     run_time = datetime.datetime.now()
     log.info(f"run_time: {run_time}")

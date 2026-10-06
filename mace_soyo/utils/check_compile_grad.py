@@ -107,7 +107,6 @@ def check_compile_grad(compiled_model):
     eager = TensorEFS(model, create_graph=True)
     previous_mode = compiled_model.training
     compiled_model.train()
-    print(f"[compile-check] torch={torch.__version__}; device={device}; dtype={dtype}", flush=True)
     try:
         with torch.random.fork_rng(devices=[device.index]), torch.enable_grad():
             for variant in (0, 1):
@@ -138,13 +137,10 @@ def check_compile_grad(compiled_model):
                         prediction, parameters, grad_outputs=grad_outputs, allow_unused=True,
                     )
                     try:
-                        error = _check_gradients(gradients, reference_gradients, named_parameters, dtype)
+                        _check_gradients(gradients, reference_gradients, named_parameters, dtype)
                     except AssertionError as error:
                         raise AssertionError(f"{name} shared-grad_outputs check: {error}") from error
-                    print(f"[compile-check] B={args[2].shape[0]} N={args[0].shape[0]} "
-                          f"{name} gradient relative L2={error:.3e}: PASS", flush=True)
                     del outputs, prediction, grad_outputs, gradients, reference_gradients
-        print("[compile-check] PASS: E/F/S and parameter gradients agree with eager.", flush=True)
     except Exception as error:
         raise RuntimeError(
             f"Compiled-training startup check failed with torch {torch.__version__} "
