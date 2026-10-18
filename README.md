@@ -5,27 +5,27 @@ ASE/TorchSim, and a LAMMPS ML-IAP interface(in test). The current branch predict
 forces, and stress; molecular charge/spin conditioning is optional.
 
 This project aims to unlock the full potential of MACE-mh-1, which is my favourite model.(https://github.com/ACEsuit/mace)
-To me, Soyo evokes “a world of simplicity and peace,” capturing the spirit of MACE-mh-1: simple in design, 
-reliable in practice, and versatile in application. 
+To me, Soyo evokes “a world of simplicity and peace,” capturing the spirit of MACE-mh-1: simple in design,
+reliable in practice, and versatile in application.
 
-The main artitecture and idea is the same as MACE-mh-1, while simple attention, Equivariant RMSnorm, code modification for speed, 
+The main artitecture and idea is the same as MACE-mh-1, while simple attention, Equivariant RMSnorm, code modification for speed,
 Spin&Charge embedding, heavier readout, Muon(optimizer) and WSD(schedule from DPA4) are added.
 Broadly speaking, MACE-SOYO offers an accuracy–speed trade-off between DPA4-Neo and DPA4-Mini.
 Training, AOTI export and inference require an NVIDIA CUDA GPU. CPU and other
 device types are rejected explicitly due to the use of cuequivariance and nvalchemi-toolkit.
 
-This is an independently developed project with assistance from GPT-6 Astra to formalize the code. 
-Although all code except for LAMMPS ML-IAP is double checked by both Astra and me, and the matbench 
+This is an independently developed project with assistance from GPT-6 Astra to formalize the code.
+Although all code except for LAMMPS ML-IAP is double checked by both Astra and me, and the matbench
 results are encouraging, this is the first time for me to complete such formal project in my spare time.
 Some minor bugs may still exist, it would be very appreciated if you report them. Thank You!
 
-Also, this code is inspired or inherited from several other superior potentials 
+Also, this code is inspired or inherited from several other superior potentials
 like Nequip, Nequix, DPA4 and EquflashV2. I give my special thank to those potentials' creators.
-Jia Jie Du offers me some useful advices and Prof.Liu offers the GPU resources to train. --Qi Ming Liang 
+Jia Jie Du offers me some useful advices and Prof.Liu offers the GPU resources to train. --Qi Ming Liang
 
 ## Installation
 
-Python >=3.12,<3.15 is required by the pinned dependencies. 
+Python >=3.12,<3.15 is required by the pinned dependencies.
 From the repository root:
 
 ```bash
@@ -34,26 +34,62 @@ python -m pip install -r requirements.txt
 
 ## Checkpoints
 
-Now MPtraj(one head) and OAM(Omat24+salex&mptraj, two heads) pt are available.
-These two checkpoints are without charge&spin embedding.
+The evaluated MPtraj checkpoint has one head, `mptraj`, and does not use
+charge/spin conditioning. Its first public download is being prepared on the
+[Releases page](https://github.com/PrincessHakuryu/MACE-SOYO/releases).
+Download links will be added when the release is published. Save the downloaded
+training checkpoint as `checkpoints/mace_soyo_mptraj.pth`.
+
+The training checkpoint is a `.pth` file. ASE and TorchSim load an AOTI `.pt2`
+package; follow the export example below on the intended inference GPU.
+An OAM checkpoint (OMat24 + sAlex/MPTrj, two heads) is planned for a separate release.
+
 A nine-head model trained on the full datasets may be released in the future:
 OMat24, sAlex + MPTrj, OC20, OC22, OC25, OMol25 + OPoly26, ODAC25, OMC25, and
 MatPES-r2SCAN.
 
 ## Matbench-discovery results
-MACE-mh-1(original,trained on MPtraj,single head,inference with cueq and torch.compile on):
-CPS: Acc: F1: DAF: Prec: MAE: R2: Ksrme: RMSD: CMDS: CDS:
-MACE-SOYO:
-CPS: Acc: F1: DAF: Prec: MAE: R2: Ksrme: RMSD: CMDS: CDS:
 
-The yaml to train original MACE-mh-1 can be found in example folder, the dataset for train 
-and valid are the same for SOYO and original version.
+These are local evaluations, not yet an official Matbench Discovery leaderboard
+entry. Discovery metrics use the `unique_prototypes` subset; normalized RMSD uses
+`symprec=1e-2`. Combined scores use the current Matbench default weights.
+
+| Metric | MACE-MH-1 reference | MACE-SOYO MPtraj |
+| --- | ---: | ---: |
+| CPS (higher is better) | 0.735 | 0.763 |
+| F1 | 0.7549 | 0.7766 |
+| Accuracy | 0.9172 | 0.9264 |
+| DAF | 4.5574 | 4.7949 |
+| Precision | 0.6967 | 0.7330 |
+| Discovery MAE (eV/atom; lower is better) | 0.04449 | 0.04136 |
+| Discovery R2 | 0.7849 | 0.7987 |
+| kappa_SRME (lower is better) | 0.4197 | 0.3498 |
+| RMSD (normalized; lower is better) | 0.0880 | 0.0832 |
+| CMDS (higher is better) | Not measured | 0.750 |
+| CDS (higher is better) | Not measured | 0.790 |
+
+Both models used the same fixed MPtraj train/validation split
+(`split_seed=42`), 100 epochs, and E:F:S loss weights of 1:1:1.
+The MACE-MH-1 inference reference used cuEquivariance and `torch.compile`.
+Its training configuration is
+[`example/mace-mh1-mptraj.yml`](example/mace-mh1-mptraj.yml); replace the
+example paths with the prepared split and E0 JSON before use.
+
+Evaluation settings:
+
+- Discovery: ASE FIRE with FrechetCellFilter, `fmax=0.02` eV/Angstrom and
+  `max_steps=500`.
+- Phonons: `phonondb-v1`, displacement 0.03 Angstrom, relaxation
+  `force_max=1e-4` eV/Angstrom and `max_steps=300`.
+- MACE-SOYO hardware: RTX 4090 for discovery/phonons; H200 NVL for MD/diatomics.
+
+Missing reference scores mean not measured, not zero.
 
 ## Training
 
-### Recommended PyTorch version 
+### Recommended PyTorch version
 
-I strongly recommend **PyTorch 2.12.0+cu126** for compiled training. Constraints on 
+I strongly recommend **PyTorch 2.12.0+cu126** for compiled training. Constraints on
 Pytorch's version may be looser if you only want to export and inference.
 
 Other PyTorch versions may have incompatibilities with `make_fx`, compiled
@@ -69,10 +105,10 @@ with compiled_training on.(100 epochs)The batchsize is 48 per GPU. The peak VRAM
 (Refernece: DPA4-Mini:5.8(150 epochs), DPA4-Neo:8.6(100 epochs)
  https://arxiv.org/pdf/2606.02419 Table1, MACE-MH-1-cueq:8.3(100 epochs, test by us))
 
-Inference Time: 
-Taking the md.arc in example folder as an example, the average time for one NVT step is listed below.
+Inference Time:
+Using the supplied 576-atom [example/md.arc](example/md.arc), the average time per NVT step is listed below.
 (DPA4-Neo:20.5ms DPA4-Mini:10.2ms MACE-SOYO: 11.2ms MACE-mh-1:22.7ms)
-The inference timing benchmark was using the ASE calculator of these models, 
+The inference timing benchmark was using the ASE calculator of these models,
 DP_TRITON_INFER=2, DP_TF32_INFER=0, DP_AMP_INFER=0 and vesin on for exporting and using DPA4 models,
 CUEQ and torch.compile on for MACE-mh-1.
 It needs to be mentioned that building neighbour matrix is also included in the time.
@@ -86,6 +122,12 @@ template before your first run:
 ```bash
 cp config/config.example.yml config/config.yml
 ```
+
+For the evaluated single-head MPtraj settings, copy
+`config/config-mptraj.example.yml` instead. A nine-head fine-tuning template is
+provided as `config/config-full.example.yml`. These public templates use
+placeholder paths. Local `config.yml`, `config-mptraj.yml` and `config-full.yml`
+are excluded from Git so local training paths can be kept without republishing them.
 
 Edit the dataset paths and training settings in `config/config.yml`. This local
 configuration is excluded from Git:
@@ -148,7 +190,7 @@ To convert extxyz data into ASE LMDB:
 
 ```bash
 python -m mace_soyo.utils.load_data \
-  --input_extxyz /data/input.extxyz \ #folder containing extxyz is also OK(recursive).
+  --input_extxyz /data/input.extxyz \
   --output_lmdb /data/train \
   --pbc True \
   --ignorewarn
@@ -182,7 +224,7 @@ When resuming with `--output-dir`, `resume_path` in the YAML selects the input
 checkpoint; new best/last checkpoints are saved in the selected output directory.
 Use distinct output directories for runs that should not overwrite each other.
 With `resume: true`, `resume_path` must explicitly name the input checkpoint;
-a missing, empty or blank value causes an error and exits.Without `--output-dir`, 
+a missing, empty or blank value causes an error and exits.Without `--output-dir`,
 all last/best checkpoints are saved in `model_pth/` beside `run_ddp.py`; logs use `./logs/debug`.
 To continue saving in another run directory, select it with `--output-dir`.
 
@@ -233,8 +275,8 @@ Export a trained checkpoint using a representative structure (which can read by 
 
 ```bash
 python -m mace_soyo.export.AOTI_export \
-  --ckpt-path /path/best.pth \
-  --structure-file example/export.arc \ 
+  --ckpt-path checkpoints/mace_soyo_mptraj.pth \
+  --structure-file example/export.arc \
   --output-path model.pt2 \
   --device cuda:0 \
   --dtype float32 \
@@ -254,10 +296,10 @@ One `.pt2` contains all heads and their names. Charge/spin inputs are included
 automatically when the checkpoint enables them. D3 is not embedded in the package.
 Export `--dtype` is independent of training `model_dtype`; its default remains
 `float32`, while E0 and output energies remain FP64.
-USE compatible PyTorch/CUDA/CUEQ versions for export AND inference. A package
-exported for CUDA requires a compatible CUDA device.
-For example, DO NOT export pt2 on RTX4090 and run inference on H200, it may not
-stop due to an error, but the results could be wrong!
+AOTI packages target a particular hardware/runtime environment. Export on the
+intended inference GPU and use compatible PyTorch/CUDA/CUEQ versions. Do not
+assume that a package compiled for RTX 4090 is portable to H200; re-export the
+`.pth` checkpoint for the target GPU and check the E/F/S consistency results.
 
 ## ASE
 
@@ -268,8 +310,8 @@ from mace_soyo import MACESoyoCalculator
 
 atoms = read("input.extxyz")
 atoms.calc = MACESoyoCalculator(
-    package_path="/absolute/path/model.pt2",
-    head="salexmp",
+    package_path="model.pt2",
+    head="mptraj",
     device="cuda:0",
     use_d3=False,
 )
@@ -313,8 +355,8 @@ from mace_soyo import MACESoyoTorchSimAOTIModel
 from mace_soyo.torchsim import atoms_to_state
 
 model = MACESoyoTorchSimAOTIModel(
-    package_path="/absolute/path/model.pt2",
-    head="salexmp",
+    package_path="model.pt2",
+    head="mptraj",
     device="cuda:0",
     use_d3=False,
 )
@@ -336,7 +378,7 @@ write("relaxed.extxyz", final_state.to_atoms())
 Use `atoms_to_state` to retain `atoms.info['charge']` and `atoms.info['spin']` when
 present. The batch can mix labeled and unlabeled systems; one model instance uses
 one head throughout. The example relaxes positions at fixed cell. Match
-`model.device` and `model.dtype` when constructing a state. TorchSim 0.6.1 requires 
+`model.device` and `model.dtype` when constructing a state. TorchSim 0.6.1 requires
 the same PBC flags for all systems passed together to atoms_to_state.
 
 ASE and TorchSim support optional ordinary D3(BJ) with `use_d3=True`. Only enable
@@ -353,8 +395,8 @@ For LASP-D3(BJ) in ASE:
 
 ```python
 calc = MACESoyoCalculator(
-    package_path="/absolute/path/model.pt2",
-    head="salexmp",
+    package_path="model.pt2",
+    head="mptraj",
     use_laspd3=True,
     use_laspd3_BJ=True,
     functional_type=0,  # LASP-D3's PBE parameter set
@@ -365,7 +407,7 @@ calc.close()
 ```
 
 LASP-D3 uses zero damping unless `use_laspd3_BJ=True`. Ordinary D3 parameters
-`a1`, `a2`, `s8`, `s6`, and `d3_params_path` apply only to `use_d3=True`; 
+`a1`, `a2`, `s8`, `s6`, and `d3_params_path` apply only to `use_d3=True`;
 LASP-D3 selects its parameters with `functional_type` and `use_laspd3_BJ`.
 
 With CUDA (`nvcc`), a C++ compiler, a Fortran compiler and CMake >= 3.25.2:
@@ -383,7 +425,7 @@ LASP-D3 source: [LipidL/LASP-D3](https://github.com/LipidL/LASP-D3).
 
 ## LAMMPS ML-IAP
 
-This interface is experimental and completely written by GPT-6 Astra; 
+This interface is experimental and completely written by GPT-6 Astra;
 its correctness has not yet been fully validated.
 
 This exports a fixed-head Python/PyTorch object (`lammps.pt`), not AOTI or
@@ -395,7 +437,7 @@ CUEQ, and CuPy:
 python -m pip install cupy-cuda12x
 python -m mace_soyo.export.export_lammps_mliap \
   --ckpt-path /path/best.pth \
-  --head salexmp \
+  --head mptraj \
   --output-path lammps.pt
 ```
 

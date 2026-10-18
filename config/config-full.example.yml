@@ -1,0 +1,86 @@
+# Nine-head fine-tuning example; replace all dataset paths and finetune_path.
+# Use a starter checkpoint with compatible architecture and readout_hidden=64.
+# One dataset entry per training head. Replace the dataset paths before training.
+# Fresh and finetuned models require num_heads == len(datasets).
+# Finetune keeps only declared heads. Same names copy their old readouts;
+# new names copy the sole old head, or specify finetune_head for a multihead source.
+num_heads: 9
+use_spin_charge: true
+readout_hidden: 64
+datasets:
+  - name: omat_pbe
+    train_path: /path/to/omat24/train
+    valid_path: /path/to/omat24/val
+    pbc: true
+    e0_yaml_path: ./config/e0_omat.yaml
+  - name: oc20
+    train_path: /path/to/oc20/train
+    valid_path: /path/to/oc20/val
+    pbc: true
+    e0_yaml_path: ./config/e0_oc20.yaml
+  - name: omol25
+    train_path: /path/to/omol25-opoly26/train
+    valid_path: /path/to/omol25-opoly26/val
+    pbc: false
+    e0_yaml_path: ./config/e0_omol25.yaml
+  - name: salexmp
+    train_path: /path/to/salex-mptraj/train
+    valid_path: /path/to/salex-mptraj/val
+    pbc: true
+    e0_yaml_path: ./config/e0_salex.yaml
+  - name: omc25
+    train_path: /path/to/omc25/train
+    valid_path: /path/to/omc25/val
+    pbc: true
+    e0_yaml_path: ./config/e0_omc25.yaml
+  - name: oc25
+    train_path: /path/to/oc25/train
+    valid_path: /path/to/oc25/val
+    pbc: true
+    e0_yaml_path: ./config/e0_oc25.yaml
+  - name: matpesr2scan
+    train_path: /path/to/matpes-r2scan/train
+    valid_path: /path/to/matpes-r2scan/val
+    pbc: true
+    e0_yaml_path: ./config/e0_matpes.yaml
+  - name: oc22
+    train_path: /path/to/oc22/train
+    valid_path: /path/to/oc22/val
+    pbc: true
+    e0_yaml_path: ./config/e0_oc22.yaml
+  - name: odac25
+    train_path: /path/to/odac25/train
+    valid_path: /path/to/odac25/val
+    pbc: true
+    e0_yaml_path: ./config/e0_odac25.yaml
+
+compile_training: true
+model_dtype: float32    # Data, E0 and losses always use FP64.
+batch_size: 128
+train_percent: 0.95
+valid_percent: 0.05
+resume: false
+resume_path: ./model_pth/512_2_128_checkpoint_last.pt
+finetune: true
+finetune_path: /path/to/pretrained.pth
+finetune_reset_e0: true  # False: copy source-head E0. True: use each target's YAML E0.
+max_lr: 0.001
+min_lr: 0.00001
+warmup_factor: 0.1
+warmup_epochs: 0.2
+wsd_decay_ratio: 0.65
+max_clip: 10.0
+epoch_num: 10
+cutoff: 6.0
+num_rbf: 16
+node_dim: 512
+num_layers: 2
+max_l: 1
+max_ell: 3
+max_correlations: 3  # Maximum symmetric-contraction degree in each layer.
+use_zbl: true
+pair_dim: 128
+edge_weight_dim: 96
+E_factor: 1
+F_factor: 1
+S_factor: 1

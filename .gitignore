@@ -11,6 +11,8 @@ venv/
 # Local training configuration and cluster submission script
 /config/config.yml
 /config/config-oam.yml
+/config/config-mptraj.yml
+/config/config-full.yml
 /ddp.slurm
 
 # Training, inference and simulation output
@@ -27,7 +29,7 @@ venv/
 # Required data for the ordinary D3 backend, not a model checkpoint
 !/mace_soyo/utils/dftd3_parameters.pt
 *.arc
-!/example/export.arc
+!/example/*.arc
 *.xyz
 *.extxyz
 *.cif

@@ -1,3 +1,4 @@
+# Single-head MPtraj training: 100 epochs, batch_size=48 per GPU.
 # One dataset entry per training head. Replace the dataset paths before training.
 # Fresh and finetuned models require num_heads == len(datasets).
 # Finetune keeps only declared heads. Same names copy their old readouts;
@@ -8,8 +9,8 @@ readout_hidden: 64
 datasets:
   - name: mptraj
     # finetune_head: omat_pbe  # Optional source head override when finetune is true.
-    train_path: /home15/liangqm/NNP-DATASET/salex-mptraj/train-mptraj-only
-    valid_path: 
+    train_path: /path/to/mptraj/train
+    valid_path: ""
     pbc: true
     e0_yaml_path: ./config/e0_mptraj.yaml
 
