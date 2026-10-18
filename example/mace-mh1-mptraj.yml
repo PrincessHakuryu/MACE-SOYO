@@ -1,0 +1,72 @@
+# Split: SOYO torch.random_split([0.95, 0.05]), split_seed=42.
+# seed=123 controls model/training randomness, not this fixed split.
+# E0 is copied from SOYO; std is the force RMS of this training split.
+# Batch size 48 is per rank (4 GPUs => global batch size 192).
+name: mace-mh1-mptraj-benchmark
+heads:
+  mptraj:
+    info_keys:
+      energy: energy
+      stress: stress
+    arrays_keys:
+      forces: forces
+    train_file:
+    - /home15/liangqm/NNP-DATASET/mptraj-mace-benchmark/train
+    valid_file:
+    - /home15/liangqm/NNP-DATASET/mptraj-mace-benchmark/valid
+    E0s: /home15/liangqm/NNP-DATASET/mptraj-mace-benchmark/e0_mptraj.json
+atomic_numbers: '[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+  20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+  40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59,
+  60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79,
+  80, 81, 82, 83, 89, 90, 91, 92, 93, 94]'
+model: ScaleShiftMACE
+interaction_first: RealAgnosticResidualNonLinearInteractionBlock
+interaction: RealAgnosticResidualNonLinearInteractionBlock
+hidden_irreps: 512x0e + 512x1o
+edge_irreps: 128x0e + 128x1o
+max_ell: 3
+correlation: 3
+num_interactions: 2
+num_radial_basis: 10
+r_max: 6.0
+pair_repulsion: true
+distance_transform: Agnesi
+apply_cutoff: false
+use_edge_irreps_first: true
+use_agnostic_product: true
+scaling: rms_forces_scaling
+mean: 0.0
+std: 0.8078248326112817
+compute_avg_num_neighbors: true
+optimizer: adam
+amsgrad: true
+lr: 0.003
+weight_decay: 1.0e-08
+scheduler: ReduceLROnPlateau
+lr_factor: 0.8
+scheduler_patience: 5
+loss: universal
+energy_weight: 1.0
+forces_weight: 1.0
+stress_weight: 1.0
+compute_stress: true
+huber_delta: 0.01
+error_table: PerAtomRMSEstressvirials
+batch_size: 48
+valid_batch_size: 48
+eval_interval: 1
+max_num_epochs: 100
+patience: 40
+clip_grad: 100.0
+num_workers: 2
+ema: true
+ema_decay: 0.995
+default_dtype: float32
+device: cuda
+enable_cueq: true
+seed: 123
+keep_checkpoints: true
+restart_latest: false
+save_cpu: true
+work_dir: /home15/liangqm/NNP-DATASET/mptraj-mace-benchmark/runs

@@ -11,7 +11,7 @@ Runtime boundary:
     AOTI .pt2 package:
         New: (z, frac_pos, cell, batch, edge_index, image, head_id, pbc) -> E/F/S
         Conditioned packages append charge/spin and masks read from atoms.info.
-        Legacy six-input single-head packages remain supported.
+        Packages must use the receiver-first edge convention.
 
 This runtime calculator intentionally does NOT load a training checkpoint and does
 NOT construct MACESoyo. The checkpoint is only used by
@@ -47,7 +47,7 @@ from mace_soyo.inference.aoti_utils import (
 )
 
 
-from mace_soyo.utils.geometry import atoms_geometry
+from mace_soyo.utils.dataset_utils import atoms_geometry
 from mace_soyo.utils.device import resolve_cuda_device
 
 
@@ -62,7 +62,7 @@ def get_neighbor_list_gpu_pbc(
     cutoff: float,
     pbc: Tuple[bool, bool, bool],
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Build PyG-style PBC neighbor list via nvalchemiops."""
+    """Build [receiver=i, sender=j] edges and sender-image shifts via nvalchemiops."""
     pos = torch.bmm(frac_pos.unsqueeze(0), cell.unsqueeze(0)).squeeze(0)
     batch = torch.zeros(pos.size(0), dtype=torch.long, device=pos.device)
     pbc_tensor = torch.tensor([list(bool(x) for x in pbc)], dtype=torch.bool, device=pos.device)

@@ -27,6 +27,7 @@ venv/
 # Required data for the ordinary D3 backend, not a model checkpoint
 !/mace_soyo/utils/dftd3_parameters.pt
 *.arc
+!/example/export.arc
 *.xyz
 *.extxyz
 *.cif

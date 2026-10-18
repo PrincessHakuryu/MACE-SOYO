@@ -1,6 +1,6 @@
 # MACE-SOYO
 
-A multi-head interatomic potential with training, AOTInductor (AOTI) inference for
+A multi-head interatomic potential with experimental compiled training, AOTInductor (AOTI) inference for
 ASE/TorchSim, and a LAMMPS ML-IAP interface(in test). The current branch predicts energy,
 forces, and stress; molecular charge/spin conditioning is optional.
 
@@ -8,16 +8,20 @@ This project aims to unlock the full potential of MACE-mh-1, which is my favouri
 To me, Soyo evokes “a world of simplicity and peace,” capturing the spirit of MACE-mh-1: simple in design, 
 reliable in practice, and versatile in application. 
 
-The main artitecture is the same as MACE-mh-1, while simple attention, Equivariant RMSnorm, code modification for speed and Spin&Charge embedding are added.
+The main artitecture and idea is the same as MACE-mh-1, while simple attention, Equivariant RMSnorm, code modification for speed, 
+Spin&Charge embedding, heavier readout, Muon(optimizer) and WSD(schedule from DPA4) are added.
 Broadly speaking, MACE-SOYO offers an accuracy–speed trade-off between DPA4-Neo and DPA4-Mini.
 Training, AOTI export and inference require an NVIDIA CUDA GPU. CPU and other
-device types are rejected explicitly due to cuequivariance and nvalchemi-toolkit.
+device types are rejected explicitly due to the use of cuequivariance and nvalchemi-toolkit.
 
 This is an independently developed project with assistance from GPT-6 Astra to formalize the code. 
 Although all code except for LAMMPS ML-IAP is double checked by both Astra and me, and the matbench 
-results are encouraging, this is the first time for me to complete a single project in my spare time.
+results are encouraging, this is the first time for me to complete such formal project in my spare time.
 Some minor bugs may still exist, it would be very appreciated if you report them. Thank You!
 
+Also, this code is inspired or inherited from several other superior potentials 
+like Nequip, Nequix, DPA4 and EquflashV2. I give my special thank to those potentials' creators.
+Jia Jie Du offers me some useful advices and Prof.Liu offers the GPU resources to train. --Qi Ming Liang 
 
 ## Installation
 
@@ -30,21 +34,48 @@ python -m pip install -r requirements.txt
 
 ## Checkpoints
 
-Pretrained checkpoints and datasets are not bundled with this source release.
-Only a two-head model is currently available.
+Now MPtraj(one head) and OAM(Omat24+salex&mptraj, two heads) pt are available.
+These two checkpoints are without charge&spin embedding.
 A nine-head model trained on the full datasets may be released in the future:
 OMat24, sAlex + MPTrj, OC20, OC22, OC25, OMol25 + OPoly26, ODAC25, OMC25, and
 MatPES-r2SCAN.
 
+## Matbench-discovery results
+MACE-mh-1(original,trained on MPtraj,single head,inference with cueq and torch.compile on):
+CPS: Acc: F1: DAF: Prec: MAE: R2: Ksrme: RMSD: CMDS: CDS:
+MACE-SOYO:
+CPS: Acc: F1: DAF: Prec: MAE: R2: Ksrme: RMSD: CMDS: CDS:
+
+The yaml to train original MACE-mh-1 can be found in example folder, the dataset for train 
+and valid are the same for SOYO and original version.
+
 ## Training
 
-### Recommended PyTorch version
+### Recommended PyTorch version 
 
-I strongly recommend **PyTorch 2.12.0** for training.
+I strongly recommend **PyTorch 2.12.0+cu126** for compiled training. Constraints on 
+Pytorch's version may be looser if you only want to export and inference.
 
 Other PyTorch versions may have incompatibilities with `make_fx`, compiled
 force/stress training, or dynamic shapes. Disable compile_training in config.yml
-to avoid any incompatibilities.
+to avoid any incompatibilities if the automatic gradcheck fails.
+
+Enable compiled training would speed up training for about 30% in MACE-SOYO.
+
+### Time and VRAM
+Training Time and VRAM cost:
+Taking MPtraj as an example, the total training time is 5.0 GPU-days on 4 A100
+with compiled_training on.(100 epochs)The batchsize is 48 per GPU. The peak VRAM is up to 52GB.
+(Refernece: DPA4-Mini:5.8(150 epochs), DPA4-Neo:8.6(100 epochs)
+ https://arxiv.org/pdf/2606.02419 Table1, MACE-MH-1-cueq:8.3(100 epochs, test by us))
+
+Inference Time: 
+Taking the md.arc in example folder as an example, the average time for one NVT step is listed below.
+(DPA4-Neo:20.5ms DPA4-Mini:10.2ms MACE-SOYO: 11.2ms MACE-mh-1:22.7ms)
+The inference timing benchmark was using the ASE calculator of these models, 
+DP_TRITON_INFER=2, DP_TF32_INFER=0, DP_AMP_INFER=0 and vesin on for exporting and using DPA4 models,
+CUEQ and torch.compile on for MACE-mh-1.
+It needs to be mentioned that building neighbour matrix is also included in the time.
 
 ### Data and configuration
 
@@ -77,7 +108,7 @@ datasets:
     e0_yaml_path: ./config/e0_salex.yaml
 ```
 
-For a new or fine-tuned model, `num_heads` must equal the number of dataset
+For every run, `num_heads` must equal the number of dataset
 entries. `datasets` declares the target model's head names and their order;
 checkpoint heads omitted from this list are not saved in the fine-tuned model.
 Head names are stored in
@@ -157,8 +188,8 @@ To continue saving in another run directory, select it with `--output-dir`.
 
 For a new run, set `resume: false` and `finetune: false`. For continuation, set
 `resume: true` and `resume_path`, keeping the same architecture and heads.
-New training checkpoints use format 4 and named readout layers; older training
-checkpoints are not supported. Previously exported compatible `.pt2` files are unchanged.
+Resume requires exactly the checkpoint's head count, names and dataset order;
+adding, removing, renaming or reordering heads requires fine-tuning.
 For fine-tuning, set `finetune: true` and `finetune_path` with `resume: false`:
 
 - Keep the shared backbone and initialize every target readout from a checkpoint
@@ -171,7 +202,7 @@ For fine-tuning, set `finetune: true` and `finetune_path` with `resume: false`:
 - Keep `readout_hidden` unchanged. Transfer accounts for the change in Linear
   input normalization when the head count changes.
 - `finetune_reset_e0: false` copies each target's E0 from its selected source head.
-  Set it to `true` to replace E0 using each target dataset's prepared YAML.
+  SET IT to `true` to replace E0 using each target dataset's prepared YAML in config.
   Fine-tuning starts a new optimizer/schedule; inherited weights remain trainable.
 
 For example, to fine-tune B and D from a checkpoint with heads `[A, B, C, D, E]`,
@@ -190,10 +221,6 @@ For a new name with a multihead source, choose its initializer explicitly:
   pbc: true
   e0_yaml_path: ./config/e0_new_task.yaml
 ```
-
-To resume a run, set `resume_path` to its saved checkpoint and keep the saved
-architecture and training dataset names, order and PBC settings.
-
 For molecular conditioning, set `use_spin_charge: true`. The loader reads graph
 labels `charge` and `spin` from ASE row data. Spin means multiplicity (singlet = 1).
 Conditioning is enabled only when both labels are present; it does not predict
@@ -202,12 +229,12 @@ Charge must be an integer in [-100, 100] and spin in [1, 100].
 
 ## AOTI export
 
-Export a trained checkpoint using a representative structure:
+Export a trained checkpoint using a representative structure (which can read by ASE):
 
 ```bash
 python -m mace_soyo.export.AOTI_export \
   --ckpt-path /path/best.pth \
-  --structure-file /path/structure.extxyz \
+  --structure-file example/export.arc \ 
   --output-path model.pt2 \
   --device cuda:0 \
   --dtype float32 \
@@ -220,19 +247,19 @@ sizes, including B=1 for ASE. `--max-graphs` defaults to 20000 and must be at
 least 2. Optional `--max-nodes` and `--max-edges` set upper bounds on atoms and
 directed edges.
 
-One `.pt2` contains all heads and their names. The exporter checks energy, forces,
-and stress against the eager model for every head. Energy error must be at most
-`2e-5 eV/atom` (0.02 meV/atom), with no relative tolerance. Charge/spin inputs are included
+Throughout the model and its interfaces, `i, j = edge_index` means receiver
+and sender, respectively. The edge vector is `r_j - r_i + image @ cell`.
+
+One `.pt2` contains all heads and their names. Charge/spin inputs are included
 automatically when the checkpoint enables them. D3 is not embedded in the package.
 Export `--dtype` is independent of training `model_dtype`; its default remains
 `float32`, while E0 and output energies remain FP64.
-Use compatible PyTorch/CUDA/CUEQ versions for export and inference. A package
+USE compatible PyTorch/CUDA/CUEQ versions for export AND inference. A package
 exported for CUDA requires a compatible CUDA device.
+For example, DO NOT export pt2 on RTX4090 and run inference on H200, it may not
+stop due to an error, but the results could be wrong!
 
 ## ASE
-
-The neighbor cutoff is read from the exported package. The calculator has no
-external `cutoff` option; re-export packages that lack cutoff metadata.
 
 ```python
 from ase.io import read, write
@@ -274,7 +301,8 @@ atoms.info.update(charge=1, spin=1)
 
 Both labels are needed to enable conditioning. Missing either disables it for
 that structure; it does not imply a neutral singlet. Do not pass valid electronic
-labels to an unconditioned package.
+labels to an unconditioned package. And do not use this embedding on PBC structures,
+which is unphysical and unreliable.
 
 ## TorchSim
 
@@ -337,9 +365,8 @@ calc.close()
 ```
 
 LASP-D3 uses zero damping unless `use_laspd3_BJ=True`. Ordinary D3 parameters
-`a1`, `a2`, `s8`, `s6`, and
-`d3_params_path` apply only to `use_d3=True`; LASP-D3 selects its parameters with
-`functional_type` and `use_laspd3_BJ`.
+`a1`, `a2`, `s8`, `s6`, and `d3_params_path` apply only to `use_d3=True`; 
+LASP-D3 selects its parameters with `functional_type` and `use_laspd3_BJ`.
 
 With CUDA (`nvcc`), a C++ compiler, a Fortran compiler and CMake >= 3.25.2:
 
@@ -407,6 +434,10 @@ Two GPUs, one MPI rank per GPU (CUDA-aware MPI required):
 CUDA_VISIBLE_DEVICES=0,1 OMP_NUM_THREADS=1 mpirun -np 2 lmp -k on g 2 -sf kk \
   -pk kokkos newton on neigh half comm device gpu/aware on -in in.lammps
 ```
+## Future plan
+
+Keep formalizing the code, and add long-range interactions with multipole_particle_mesh_ewald,
+providing BEC results.
 
 ## License
 

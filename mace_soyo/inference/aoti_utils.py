@@ -7,30 +7,26 @@ import json
 import numpy as np
 import torch
 
+from mace_soyo.utils.dataset_utils import read_spin_charge
+
 LEGACY_INPUTS = ("z", "frac_pos", "cell", "batch", "edge_index", "image")
 MULTIHEAD_INPUTS = LEGACY_INPUTS + ("head_id", "pbc")
 SPIN_CHARGE_INPUTS = MULTIHEAD_INPUTS + ("charge", "spin", "condition_mask")
 
 
 def spin_charge_from_atoms(atoms_list, *, device, dtype):
-    """Read graph labels from ASE info; None is missing, charge=0 is present."""
-    values, masks = [], []
-    for name, default in (("charge", 0), ("spin", 1)):
-        column, mask = [], []
-        for atoms in atoms_list:
-            value = atoms.info.get(name)
-            present = value is not None
-            if present:
-                value = float(value)
-                if not np.isfinite(value) or not value.is_integer() or (name == "spin" and value < 1):
-                    raise ValueError(f"Invalid molecular {name}: {value}")
-                lower = -100 if name == "charge" else 1
-                assert lower <= value <= 100, f"atoms.info[{name!r}] must be in [{lower}, 100], got {value}."
-            column.append(value if present else default)
-            mask.append(present)
-        values.append(torch.tensor(column, device=device, dtype=dtype))
-        masks.append(torch.tensor(mask, device=device, dtype=torch.bool))
-    return (*values, masks[0] & masks[1])
+    """Pack shared ASE graph-label readings into batched runtime tensors."""
+    charges, spins, masks = [], [], []
+    for atoms in atoms_list:
+        charge, spin, mask = read_spin_charge(atoms.info)
+        charges.append(charge)
+        spins.append(spin)
+        masks.append(mask)
+    return (
+        torch.tensor(charges, device=device, dtype=dtype),
+        torch.tensor(spins, device=device, dtype=dtype),
+        torch.tensor(masks, device=device, dtype=torch.bool),
+    )
 
 
 def select_head(metadata, head=None):

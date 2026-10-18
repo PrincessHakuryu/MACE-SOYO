@@ -11,7 +11,7 @@ import torch
 import yaml
 from tqdm import tqdm
 
-from mace_soyo.utils.dataset_config import parse_pbc
+from mace_soyo.utils.dataset_utils import parse_pbc
 
 
 def _iter_extxyz_files(input_path: Path) -> List[Path]:

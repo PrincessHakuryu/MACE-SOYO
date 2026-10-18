@@ -9,7 +9,7 @@ _NORM_CACHE = {}
 
 
 def _normalize2mom_cst(fn) -> float:
-    """Same idea as e3nn.math.normalize2mom / MACE GatedEquivariantBlock."""
+    """From MACE GatedEquivariantBlock."""
     if fn is None:
         return 1.0
 
@@ -29,7 +29,6 @@ def _normalize2mom_cst(fn) -> float:
 
 
 def _get_single_0e_slice(irreps, name="irreps"):
-    """Scalar channel range in CUEQ's ir_mul layout."""
     matches = [block for (_, ir), block in zip(irreps, irreps.slices())
                if ir.l == 0 and ir.p == 1]
     if len(matches) != 1:
@@ -43,7 +42,7 @@ def _assert_uniform_channel_multiplicity(irreps, name="irreps"):
 
 
 class SpinChargeEmbedding(nn.Module):
-    """MACE-OMOL additive conditioning of scalar (0e) node features."""
+    """From MACE-OMol"""
     def __init__(self, node_channels: int):
         super().__init__()
 
@@ -113,8 +112,7 @@ class ZBLBasis(torch.nn.Module):
         z: torch.Tensor,
         edge_index: torch.Tensor,
     ) -> torch.Tensor:
-        sender = edge_index[0]
-        receiver = edge_index[1]
+        receiver, sender = edge_index
 
         Z_u = z[sender].to(torch.int64)
         Z_v = z[receiver].to(torch.int64)
@@ -236,8 +234,7 @@ class AgnesiTransform(torch.nn.Module):
         edge_index: torch.Tensor,
         node_atomic_numbers: torch.Tensor,
     ) -> torch.Tensor:
-        sender = edge_index[0]
-        receiver = edge_index[1]
+        receiver, sender = edge_index
         Z_u = node_atomic_numbers[sender].to(torch.int64)
         Z_v = node_atomic_numbers[receiver].to(torch.int64)
         r_0: torch.Tensor = 0.5 * (self.covalent_radii[Z_u] + self.covalent_radii[Z_v])
@@ -292,8 +289,7 @@ class CueqConvFusionWrapper(nn.Module):
         tp_weights: torch.Tensor,
         edge_index: torch.Tensor,
     ) -> torch.Tensor:
-        sender = edge_index[0]
-        receiver = edge_index[1]
+        receiver, sender = edge_index
 
         out = self.conv_tp(
             [tp_weights, node_feats, edge_attrs],
@@ -386,7 +382,7 @@ class CuePostGateIRMul(nn.Module):
 
 class EquivariantRMSNorm(nn.Module):
     """Equal weight per l block; optional scalar centering and channel-wise affine."""
-    def __init__(self, irreps, eps=1.0e-8, affine=True, centering=True):
+    def __init__(self, irreps, eps=1.0e-8, affine=True, centering=False):
         super().__init__()
         _assert_uniform_channel_multiplicity(irreps)
         self.blocks = [(block, mul, ir.dim) for (mul, ir), block in zip(irreps, irreps.slices())]
@@ -491,9 +487,9 @@ class EquivariantInteractionBlock(nn.Module):
             )
         )
         # Scalar TP weights and environment density
-        self.prepare_sender_tp = nn.Linear(node_scalar_channels, edge_weight_dim, bias=False)
-        self.prepare_receiver_tp = nn.Linear(node_scalar_channels, edge_weight_dim, bias=False)
-        self.prepare_rbf_tp = nn.Linear(num_rbf, edge_weight_dim, bias=True)
+        # Keep one full matrix for initialization and Muon; split only the forward work.
+        projection_input_dim = 2 * node_scalar_channels + num_rbf
+        self.prepare_tp = nn.Linear(projection_input_dim, edge_weight_dim)
         self.pair_feat = nn.Sequential(
             nn.LayerNorm(edge_weight_dim),
             nn.SiLU(),
@@ -506,9 +502,7 @@ class EquivariantInteractionBlock(nn.Module):
             nn.Linear(edge_weight_dim, self.tp.weight_numel),
         )
 
-        self.prepare_sender_density = nn.Linear(node_scalar_channels, edge_weight_dim, bias=False)
-        self.prepare_receiver_density = nn.Linear(node_scalar_channels, edge_weight_dim, bias=False)
-        self.prepare_rbf_density = nn.Linear(num_rbf, edge_weight_dim, bias=True)
+        self.prepare_density = nn.Linear(projection_input_dim, edge_weight_dim)
 
         self.density_fn = nn.Sequential(
             nn.LayerNorm(edge_weight_dim),
@@ -546,7 +540,6 @@ class EquivariantInteractionBlock(nn.Module):
         )
         # Node normalization
         self.node_norm = EquivariantRMSNorm(self.irreps_in)
-
     def forward(
         self,
         x,
@@ -555,7 +548,7 @@ class EquivariantInteractionBlock(nn.Module):
         edge_rbf,
         edge_cutoff,
     ):
-        j, i = edge_index
+        i, j = edge_index
 
         x_res = self.sc_lin_x(x)
 
@@ -565,17 +558,25 @@ class EquivariantInteractionBlock(nn.Module):
 
         x_scalar = x[:, self.scalar_slice]
 
-        x_sender_tp = self.prepare_sender_tp(x_scalar)
-        x_receiver_tp = self.prepare_receiver_tp(x_scalar)
-        edge_rbf_tp = self.prepare_rbf_tp(edge_rbf)
+        # Original column order: [RBF, sender scalars, receiver scalars].
+        # One registered matrix; reuse the node projections across their edges.
+        radial_channels = edge_rbf.shape[-1]
+        channels = x_scalar.shape[-1]
+        tp_weight = self.prepare_tp.weight
+        edge_rbf_tp = F.linear(edge_rbf, tp_weight[:, :radial_channels], self.prepare_tp.bias)
+        x_sender_tp = F.linear(x_scalar, tp_weight[:, radial_channels:radial_channels + channels])
+        x_receiver_tp = F.linear(x_scalar, tp_weight[:, radial_channels + channels:])
 
         raw_tp_weights = self.pair_feat(edge_rbf_tp + x_sender_tp[j] + x_receiver_tp[i])
 
         tp_weights = raw_tp_weights * edge_cutoff
 
-        x_sender_density = self.prepare_sender_density(x_scalar)
-        x_receiver_density = self.prepare_receiver_density(x_scalar)
-        edge_rbf_density = self.prepare_rbf_density(edge_rbf)
+        density_weight = self.prepare_density.weight
+        edge_rbf_density = F.linear(
+            edge_rbf, density_weight[:, :radial_channels], self.prepare_density.bias,
+        )
+        x_sender_density = F.linear(x_scalar, density_weight[:, radial_channels:radial_channels + channels])
+        x_receiver_density = F.linear(x_scalar, density_weight[:, radial_channels + channels:])
 
         edge_density = torch.tanh(
             self.density_fn(edge_rbf_density + x_sender_density[j] + x_receiver_density[i]) ** 2

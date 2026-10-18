@@ -6,6 +6,7 @@ Named multi-head, no-q AOTInductor exporter for MACESoyo.
 AOTI ABI:
     inputs : (z, frac_pos, cell, batch, edge_index, image, head_id, pbc)
     outputs: (energy, forces, stress)
+    edges  : [receiver=i, sender=j], with r_ij = r_j - r_i + image @ cell
 
 Design:
     - Neighbor-list construction stays outside the exported AOTI model.
@@ -39,7 +40,7 @@ if __package__ in (None, ""):
 from mace_soyo.utils.compile_utils import TensorEFS, make_fx_symbolic
 from mace_soyo.inference.ase_calc import get_neighbor_list_gpu_pbc
 from mace_soyo.inference.aoti_utils import MULTIHEAD_INPUTS, SPIN_CHARGE_INPUTS, resolve_torch_dtype
-from mace_soyo.utils.geometry import atoms_geometry
+from mace_soyo.utils.dataset_utils import atoms_geometry
 from mace_soyo.utils.device import resolve_cuda_device
 from mace_soyo.utils.model_checkpoint import load_model_from_checkpoint
 
@@ -315,7 +316,8 @@ def main() -> None:
         "mace_soyo_aoti_runtime_constant_folding": "1",
         "mace_soyo_aoti_keep_tensor_constants": "1",
         "mace_soyo_aoti_safe_norm": "0",
-        "mace_soyo_aoti_abi": "batched_noq_multihead_efs_v3",
+        "mace_soyo_aoti_abi": "batched_noq_multihead_efs_v4",
+        "mace_soyo_aoti_edge_index": "receiver sender",
         "mace_soyo_aoti_metadata_schema": "3",
         "mace_soyo_aoti_num_heads": str(base_model.num_heads),
         "mace_soyo_aoti_head_names": json.dumps(base_model.head_names),

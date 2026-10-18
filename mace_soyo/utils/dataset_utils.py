@@ -1,9 +1,11 @@
-"""Validate dataset settings and map training heads to checkpoint heads."""
+"""Dataset configuration, paths, and shared ASE geometry/graph-label helpers."""
 
 from copy import deepcopy
 import os
 from pathlib import Path
+from typing import List
 
+import numpy as np
 import yaml
 
 
@@ -30,6 +32,51 @@ def parse_pbc(value):
     raise ValueError(f"pbc must be True or False (three-axis PBC is also supported), got {value!r}")
 
 
+def atoms_geometry(atoms, *, pbc=None):
+    """Return float64 fractional positions, a complete row cell and PBC.
+
+    Only periodic axes are wrapped. Missing nonperiodic vectors are completed
+    as a coordinate basis, not as a physical periodic simulation box.
+    TorchSim already has device tensors and keeps its separate Torch path.
+    """
+    positions = np.asarray(atoms.positions, dtype=np.float64)
+    original = np.asarray(atoms.cell, dtype=np.float64)
+    axes = np.asarray(atoms.pbc if pbc is None else pbc, dtype=bool)
+    if not np.isfinite(positions).all() or not np.isfinite(original).all():
+        raise ValueError("Positions and cell must be finite.")
+    if np.any(np.linalg.norm(original, axis=1)[axes] < 1e-10):
+        raise ValueError("A periodic axis has a missing/zero cell vector.")
+    cell = np.asarray(atoms.cell.complete(), dtype=np.float64)
+    if abs(np.linalg.det(cell)) < 1e-10:
+        raise ValueError("Cell vectors are linearly dependent.")
+    frac = np.linalg.solve(cell.T, positions.T).T
+    frac[:, axes] %= 1.0  # Leave nonperiodic axes unwrapped.
+    return frac, cell, axes
+
+
+def read_spin_charge(labels):
+    """Read charge, spin multiplicity and their joint mask from a mapping.
+
+    Training passes row.data; ASE inference passes atoms.info. None is missing,
+    but charge=0 is present. This helper creates no tensors or GPU transfers.
+    """
+    values, present = [], []
+    for name, default in (("charge", 0), ("spin", 1)):
+        value = labels.get(name)
+        present.append(value is not None)
+        if value is None:
+            value = default
+        else:
+            value = float(value)
+            if not np.isfinite(value) or not value.is_integer() or (name == "spin" and value < 1):
+                raise ValueError(f"Invalid molecular {name}: {value}")
+            lower = -100 if name == "charge" else 1
+            assert lower <= value <= 100, f"{name} must be in [{lower}, 100], got {value}."
+        values.append(value)
+    charge, spin = values
+    return charge, spin, all(present)
+
+
 def normalize_training_config(config):
     if not isinstance(config, dict):
         raise ValueError("Training config must be a YAML mapping.")
@@ -52,7 +99,7 @@ def normalize_training_config(config):
         raise ValueError("Put train_path/valid_path inside datasets entries.")
     if not isinstance(datasets, list) or not datasets:
         raise ValueError("datasets must be a non-empty list, with one entry per training head.")
-    if not config.get("resume") and len(datasets) != config["num_heads"]:
+    if len(datasets) != config["num_heads"]:
         raise ValueError(
             f"num_heads={config['num_heads']} does not match the number of datasets "
             f"(training folders)={len(datasets)}. One dataset entry must map to one head."
@@ -95,7 +142,7 @@ def normalize_training_config(config):
 
 
 def align_checkpoint_heads(config, source_kwargs):
-    """Resolve finetune sources per target head; resume keeps saved head IDs."""
+    """Resolve finetune sources; resume requires unchanged heads and order."""
     config = deepcopy(config)
     source_names = list(source_kwargs["head_names"])
     old_heads = source_kwargs["num_heads"]
@@ -125,14 +172,13 @@ def align_checkpoint_heads(config, source_kwargs):
             entry["finetune_head"] = choice
             entry["finetune_source_head_id"] = source_names.index(choice)
     else:
-        # resume
-        missing = set(active_names) - set(source_names)
-        if missing:
-            raise ValueError(f"Unknown training heads {sorted(missing)}; available: {source_names}.")
-        config["num_heads"] = old_heads
-        config["head_names"] = source_names
-        for entry in config["datasets"]:
-            entry["head_id"] = source_names.index(entry["name"])
+        if config["num_heads"] != old_heads or active_names != source_names:
+            raise ValueError(
+                "Resume requires the same head count, names and order as the checkpoint. "
+                f"Checkpoint: num_heads={old_heads}, heads={source_names}; "
+                f"config: num_heads={config['num_heads']}, heads={active_names}. "
+                "Use finetune to change heads."
+            )
     return config
 
 
@@ -141,3 +187,18 @@ def resolve_data_path(path):
     if not path.is_absolute():
         path = Path.cwd() / path
     return str(path.resolve())
+
+
+def discover_aselmdb_files(path: Path) -> List[Path]:
+    """Return sorted recursive shards, or the explicitly supplied single file."""
+    path = Path(path)
+    if path.is_dir():
+        db_files = sorted(path.rglob("*.aselmdb"))
+    elif path.is_file():
+        db_files = [path]
+    else:
+        raise FileNotFoundError(f"LMDB path not found: {path}")
+
+    if not db_files:
+        raise FileNotFoundError(f"No .aselmdb files found under: {path}")
+    return db_files

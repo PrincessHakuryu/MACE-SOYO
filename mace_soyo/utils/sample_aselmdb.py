@@ -31,9 +31,9 @@ from pathlib import Path
 # Keep the standalone data tool independent of the package's inference imports.
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from data_paths import discover_aselmdb_files
+    from dataset_utils import discover_aselmdb_files
 else:
-    from .data_paths import discover_aselmdb_files
+    from .dataset_utils import discover_aselmdb_files
 
 import ase.db
 import numpy as np

@@ -1,6 +1,5 @@
-"""MACE-style scalar readout: dense equivariant Linear + per-head masks.
+"""MACE-style scalar readout using CUEQ Linear and per-head masks.
 
-Uses MACE's masked-head structure with CUEQ Linear and the original SiLU.
 https://github.com/ACEsuit/mace/blob/develop/mace/modules/blocks.py
 """
 
@@ -17,12 +16,14 @@ def mask_head(x, heads, num_heads):
 
 
 class ScalarLinear(cuet.Linear):
-    """CUEQ scalar Linear plus bias (CUEQ Linear has no built-in bias argument)."""
+    """CUEQ scalar Linear with a separate, zero-initialized bias."""
 
     def __init__(self, in_features, out_features):
-        super().__init__(cue.Irreps("O3", f"{in_features}x0e"),
-                         cue.Irreps("O3", f"{out_features}x0e"),
-                         layout_in=cue.ir_mul, layout_out=cue.ir_mul)
+        super().__init__(
+            cue.Irreps("O3", f"{in_features}x0e"),
+            cue.Irreps("O3", f"{out_features}x0e"),
+            layout_in=cue.ir_mul, layout_out=cue.ir_mul,
+        )
         self.bias = nn.Parameter(torch.zeros(out_features))
 
     def forward(self, x):
@@ -30,7 +31,7 @@ class ScalarLinear(cuet.Linear):
 
 
 class NonLinearReadout(nn.Module):
-    """Two hidden scalar layers with independent selected-head activations."""
+    """Two hidden scalar layers with selected-head activations."""
 
     def __init__(self, irreps_in, num_heads, hidden):
         super().__init__()

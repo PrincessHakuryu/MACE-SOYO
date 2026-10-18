@@ -12,7 +12,7 @@ from torch_ema import ExponentialMovingAverage
 
 from mace_soyo.utils.load_data import dataloader
 from mace_soyo.model import MACESoyo
-from mace_soyo.utils.dataset_config import read_config, align_checkpoint_heads
+from mace_soyo.utils.dataset_utils import read_config, align_checkpoint_heads
 from mace_soyo.utils.logger import GpuLogger
 from mace_soyo.utils.device import resolve_cuda_device
 from mace_soyo.utils.loss import efs_loss, weighted_loss_score

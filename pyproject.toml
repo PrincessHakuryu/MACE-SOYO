@@ -27,7 +27,7 @@ dependencies = [
     "lmdb==2.3.0",
     "h5py==3.16.0",
     "tables==3.11.1",
-    "numpy==2.5.3",
+    "numpy>=2.4.6",
     "scipy==1.18.1",
     "PyYAML==6.0.3",
     "tqdm==4.70.1",

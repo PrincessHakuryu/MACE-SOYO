@@ -70,9 +70,8 @@ class MACESoyoMLIAPEnergy(torch.nn.Module):
         element_indices: torch.Tensor,
         lmp_data: Any,
     ) -> torch.Tensor:
-        # LAMMPS defines rij = r_j - r_i. MACESoyo expects edge_index as
-        # [sender=j, receiver=i], matching its native nvgraph path.
-        edge_index = torch.stack((pair_j, pair_i), dim=0)
+        # LAMMPS defines rij = r_j - r_i; i receives the message from j.
+        edge_index = torch.stack((pair_i, pair_j), dim=0)
         z = self.atomic_numbers[element_indices]
         vectors = edge_vectors.to(dtype=self.dtype)
         if element_indices.numel() == 0:

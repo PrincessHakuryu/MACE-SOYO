@@ -136,7 +136,7 @@ class MACESoyo(torch.nn.Module):
         charge=None, spin=None, condition_mask=None,
         *, return_atomic: bool = False, feature_exchange=None,
     ) -> torch.Tensor:
-        """Compute energies from canonical tensors supplied by the input adapter."""
+        """Compute energies with edge_index=[receiver=i, sender=j] and v_r=r_j-r_i."""
         node_heads = head_id[batch].unsqueeze(-1)
         edge_sh = self.sph_function(v_r)
         x = self.z_emb(z - 1)
@@ -194,7 +194,7 @@ class MACESoyo(torch.nn.Module):
             positions, self.cutoff, batch, lattice, pbc=pbc,
             batch_ptr=data.ptr,
         )
-        j, i = edge_index # invert the edge_index given by alchemitoolkit in nvgraph
+        i, j = edge_index
         vectors = positions[j] + shift - positions[i]
         volume = torch.linalg.det(cell).abs()
         safe_volume = torch.where(stress_enabled, volume, torch.ones_like(volume))

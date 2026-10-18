@@ -46,7 +46,7 @@ class TensorEFS(torch.nn.Module):
         frac_pos: torch.Tensor,    # [N, 3]
         cell: torch.Tensor,        # [B, 3, 3]
         batch: torch.Tensor,       # [N], int64, atom -> graph index
-        edge_index: torch.Tensor,  # [2, E], int64, j -> i after runtime convention
+        edge_index: torch.Tensor,  # [2, E], int64, [receiver=i, sender=j]
         image: torch.Tensor,       # [E, 3], int64 unit cell shifts
         head_id: torch.Tensor,     # [B], int64 runtime head selection
         pbc: torch.Tensor,         # [B, 3], bool (independent of head)
@@ -83,7 +83,7 @@ class TensorEFS(torch.nn.Module):
             lattice[batch],
         ).squeeze(1)  # [N, 3]
 
-        j, i = edge_index
+        i, j = edge_index
         edge_batch = batch[i]
         shift = torch.bmm(
             image.to(dtype=dtype).unsqueeze(1),

@@ -19,14 +19,15 @@ from torch.utils.data import ConcatDataset, Dataset, Sampler, random_split
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
-from mace_soyo.utils.dataset_config import parse_pbc, resolve_data_path
-from mace_soyo.utils.data_paths import discover_aselmdb_files
+from mace_soyo.utils.dataset_utils import (
+    parse_pbc, resolve_data_path, discover_aselmdb_files,
+    atoms_geometry, read_spin_charge,
+)
 from mace_soyo.utils.load_extxyz import (
     build_e0_tensor_from_yaml,
     load_atom_energies_from_yaml,
     preprocess_extxyz_to_aselmdb,
 )
-from mace_soyo.utils.geometry import atoms_geometry
 
 warnings.filterwarnings(
     "ignore",
@@ -216,18 +217,9 @@ class PBCDataset(Dataset):
 
         # OMol stores the molecular labels in row.data. row.get('charge') can
         # instead return ASE's default zero charge, even for a molecular ion.
-        condition_present = True
-        for name, default in (("charge", 0), ("spin", 1)):
-            value = row.data.get(name)
-            present = value is not None
-            if present:
-                value = float(value)
-                if not np.isfinite(value) or not value.is_integer() or (name == "spin" and value < 1):
-                    raise ValueError(f"{self.lmdb_path}, row {global_idx}: invalid molecular {name}={value}.")
-                lower = -100 if name == "charge" else 1
-                assert lower <= value <= 100, f"{self.lmdb_path}, row {global_idx}: {name} must be in [{lower}, 100], got {value}."
-            data[name] = torch.tensor([value if present else default], dtype=torch.float64)
-            condition_present = condition_present and present
+        charge, spin, condition_present = read_spin_charge(row.data)
+        data.charge = torch.tensor([charge], dtype=torch.float64)
+        data.spin = torch.tensor([spin], dtype=torch.float64)
         data.condition_mask = torch.tensor([condition_present], dtype=torch.bool)
 
         return data

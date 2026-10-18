@@ -4,7 +4,7 @@
 AOTI ABI:
     New: (z, frac_pos, cell, batch, edge_index, image, head_id, pbc) -> E/F/S.
     Conditioned packages append charge, spin, condition_mask from state.
-    Legacy six-input single-head packages remain supported.
+    Packages must use the receiver-first edge convention.
     One named head per model instance applies to every system, including systems
     inserted/reordered by TorchSim autobatching.
 
@@ -16,6 +16,7 @@ TorchSim side:
 MACESoyo side:
     z is natural 1-based atomic number: H=1, He=2, ...
     frac_pos uses row-vector convention: cart = frac @ cell.
+    edge_index = [receiver=i, sender=j]; image shifts sender j.
 """
 
 from __future__ import annotations

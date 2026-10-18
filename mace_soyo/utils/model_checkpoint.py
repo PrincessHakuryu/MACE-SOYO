@@ -135,11 +135,14 @@ def _copy_readout_heads(source_state, target_state, raw_model, old_heads, head_m
 
     prefix = f"energy_readouts.{raw_model.num_layers - 1}."
     width = raw_model.readout_hidden
-    # CUEQ divides by sqrt(input width). Compensate for changing total head
-    # width; head masks keep each selected branch independent of other heads.
+    # CUEQ divides by sqrt(input width); keep the effective map when H changes.
     normalization_scale = (new_heads / old_heads) ** 0.5
     for layer_name, output_width in (("linear_hidden", width), ("linear_out", 1)):
         key = prefix + layer_name + "."
+        expected_shape = (1, old_heads * width * old_heads * output_width)
+        if tuple(source_state[key + "weight"].shape) != expected_shape:
+            raise ValueError("Finetune requires CUEQ scalar readouts; "
+                             "this checkpoint uses a different readout implementation.")
         old_weight = source_state[key + "weight"].reshape(old_heads, width, old_heads, output_width)
         new_weight = target_state[key + "weight"].clone().reshape(new_heads, width, new_heads, output_width)
         for new_in, old_in in enumerate(head_map):
@@ -147,8 +150,8 @@ def _copy_readout_heads(source_state, target_state, raw_model, old_heads, head_m
                 block = old_weight[old_in, :, old_out, :].to(new_weight)
                 new_weight[new_in, :, new_out, :].copy_(block * normalization_scale)
         state[key + "weight"] = new_weight.reshape_as(target_state[key + "weight"])
-        old_bias = source_state[key + "bias"].reshape(old_heads, output_width)
         new_bias = target_state[key + "bias"].clone().reshape(new_heads, output_width)
+        old_bias = source_state[key + "bias"].reshape(old_heads, output_width)
         for new_id, old_id in enumerate(head_map):
             new_bias[new_id].copy_(old_bias[old_id])
         state[key + "bias"] = new_bias.reshape_as(target_state[key + "bias"])
