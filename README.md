@@ -4,7 +4,7 @@ A multi-head interatomic potential with experimental compiled training, AOTInduc
 ASE/TorchSim, and a LAMMPS ML-IAP interface(in test). The current branch predicts energy,
 forces, and stress; molecular charge/spin conditioning is optional.
 
-This project aims to unlock the full potential of MACE-mh-1, which is my favourite model.(https://github.com/ACEsuit/mace)
+This project aims to unlock the full potential of MACE-mh-1, which is my favourite model. (https://github.com/ACEsuit/mace)
 To me, Soyo evokes “a world of simplicity and peace,” capturing the spirit of MACE-mh-1: simple in design,
 reliable in practice, and versatile in application.
 
