@@ -71,13 +71,14 @@ class PBCDataset(Dataset):
     @staticmethod
     def _index_dbs(path: Path):
         db_files = PBCDataset._discover_db_files(path)
-        db_ids: List[List[int]] = []
+        db_ids: List[np.ndarray] = []
         lengths: List[int] = []
 
         for fp in db_files:
             db = ase.db.connect(str(fp), readonly=True, use_lock_file=False)
             try:
-                ids = [int(x) for x in db.ids]
+                # Preserve arbitrary row IDs without one Python object per ID.
+                ids = np.asarray(db.ids, dtype=np.int64)
             finally:
                 PBCDataset._close_one_db(db)
             db_ids.append(ids)

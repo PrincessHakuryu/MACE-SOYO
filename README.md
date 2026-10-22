@@ -35,10 +35,12 @@ python -m pip install -r requirements.txt
 ## Checkpoints
 
 The evaluated MPtraj checkpoint has one head, `mptraj`, and does not use
-charge/spin conditioning. Its first public download is being prepared on the
-[Releases page](https://github.com/PrincessHakuryu/MACE-SOYO/releases).
-Download links will be added when the release is published. Save the downloaded
-training checkpoint as `checkpoints/mace_soyo_mptraj.pth`.
+charge/spin conditioning. Download
+[`mace_soyo_mptraj.pth`](https://github.com/PrincessHakuryu/MACE-SOYO/releases/download/v0.1.0/mace_soyo_mptraj.pth)
+from the [v0.1.0 release](https://github.com/PrincessHakuryu/MACE-SOYO/releases/tag/v0.1.0)
+and save it as `checkpoints/mace_soyo_mptraj.pth`.
+
+SHA256: `d726daf370a92d280b75c72ca8a1551007946e00eb75a2fed6200547cd0a7de3`.
 
 The training checkpoint is a `.pth` file. ASE and TorchSim load an AOTI `.pt2`
 package; follow the export example below on the intended inference GPU.
@@ -484,6 +486,7 @@ providing BEC results.
 ## License
 
 MACE-SOYO's original code is licensed under the [MIT License](LICENSE).
+The v0.1.0 MPtraj model checkpoint is also released under the MIT License.
 The vendored sources in `other-modules/LASP-D3-torchsim/` are adapted from
 [LipidL/LASP-D3](https://github.com/LipidL/LASP-D3) for GPU-accelerated
 dispersion calculations in ASE and TorchSim.
