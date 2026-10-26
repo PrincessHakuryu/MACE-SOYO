@@ -80,7 +80,7 @@ Evaluation settings:
 
 ### Recommended PyTorch version
 
-I strongly recommend **PyTorch 2.12.0+cu126** for compiled training. Constraints on
+I strongly recommend **PyTorch 2.12.0** for compiled training. Constraints on
 Pytorch's version may be looser if you only want to export and inference.
 
 Other PyTorch versions may have incompatibilities with `make_fx`, compiled
