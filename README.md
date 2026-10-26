@@ -33,8 +33,8 @@ python -m pip install -r requirements.txt
 
 The evaluated MPtraj checkpoint has only one head, `mptraj`, and does not use
 charge/spin conditioning. Download
-[`mace_soyo_mptraj.pth`](https://github.com/PrincessHakuryu/MACE-SOYO/releases/download/v0.1.0/mace_soyo_mptraj.pth)
-from the [v0.1.0 release](https://github.com/PrincessHakuryu/MACE-SOYO/releases/tag/v0.1.0)
+[`mace_soyo_mptraj.pth`](https://github.com/PrincessHakuryu/MACE-SOYO/releases/download/v0.1/mace_soyo_mptraj.pth)
+from the [v0.1 release](https://github.com/PrincessHakuryu/MACE-SOYO/releases/tag/v0.1)
 
 The provided training checkpoint is a `.pth` file. ASE and TorchSim load an AOTI `.pt2`
 package; follow the export example below on the intended inference GPU.
