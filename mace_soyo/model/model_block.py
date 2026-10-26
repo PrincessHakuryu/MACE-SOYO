@@ -1,3 +1,7 @@
+# Portions adapted from MACE, NequIP, Nequix/eSEN, and e3nn (MIT).
+# Original copyright/permission notices are in third-party-licenses/;
+# component-level sources are documented in THIRD_PARTY_NOTICES.md.
+
 import torch
 import torch.nn as nn
 import cuequivariance as cue
@@ -8,6 +12,7 @@ import ase
 _NORM_CACHE = {}
 
 
+# Adapted from MACE's mace/modules/gate.py; based on e3nn normalize2mom.
 def _normalize2mom_cst(fn) -> float:
     """From MACE GatedEquivariantBlock."""
     if fn is None:
@@ -73,6 +78,8 @@ class SpinChargeEmbedding(nn.Module):
         return node_feats + condition[batch]
 
 
+# Radial bases/cutoff, ZBL, and Agnesi below are adapted from
+# ACEsuit/mace: mace/modules/radial.py (MIT).
 class ZBLBasis(torch.nn.Module):
     """Implementation of the Ziegler-Biersack-Littmark (ZBL) potential
     with a polynomial cutoff envelope.
@@ -254,7 +261,8 @@ class AgnesiTransform(torch.nn.Module):
         )
 
 # cuEquivariance conv fusion for tensor-product edge message passing
-# Based on mir-group/nequip
+# TP helper: MACE's irreps_tools.py (itself based on NequIP).
+# Convolution wrapper: NequIP's nn/_tp_scatter_cueq.py (MIT).
 
 
 def tp_out_irreps(
@@ -380,6 +388,8 @@ class CuePostGateIRMul(nn.Module):
         return torch.cat(outputs, dim=-1)
 
 
+# Adapted from Nequix's torch_impl/layer_norm.py, based on eSEN/FAIRChem (MIT).
+# Modified for ir_mul layout and compact affine parameters.
 class EquivariantRMSNorm(nn.Module):
     """Equal weight per l block; optional scalar centering and channel-wise affine."""
     def __init__(self, irreps, eps=1.0e-8, affine=True, centering=False):

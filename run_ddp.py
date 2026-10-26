@@ -198,7 +198,6 @@ def main():
             f"[DATASET {dataset_info['head_id']}:{dataset_info['name']}] "
             f"pbc={''.join('T' if p else 'F' for p in dataset_info['pbc'])} "
             f"train={dataset_info['train_count']} valid={dataset_info['valid_count']} "
-            f"stress={'enabled' if all(dataset_info['pbc']) else 'disabled'} "
             f"E0={dataset_info['e0_yaml_path']} split={dataset_info['split_mode']}"
         )
     cutoff = config_data["cutoff"]

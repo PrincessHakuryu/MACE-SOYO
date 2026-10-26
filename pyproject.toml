@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,11 +8,12 @@ version = "0.1.0"
 description = "Multi-head MACE-SOYO interatomic potential for training and inference"
 requires-python = ">=3.12,<3.15"
 readme = "README.md"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "third-party-licenses/*.txt"]
 
 # Keep these versions aligned with the tested Soyo requirements.txt recipe.
 # The +cu126 PyTorch build requires the cu126 index in the pip command.
 dependencies = [
-    "torch==2.12.0+cu126",
+    "torch==2.12.0",
     "cuequivariance==0.12.0",
     "cuequivariance-torch==0.12.0",
     "cuequivariance-ops-cu12==0.12.0",

@@ -3,12 +3,9 @@
 A multi-head interatomic potential with experimental compiled training, AOTInductor (AOTI) inference for
 ASE/TorchSim, and a LAMMPS ML-IAP interface(in test). The current branch predicts energy,
 forces, and stress; molecular charge/spin conditioning is optional.
+This project aims to unlock the full potential of MACE-mh-1. (https://github.com/ACEsuit/mace)
 
-This project aims to unlock the full potential of MACE-mh-1, which is my favourite model. (https://github.com/ACEsuit/mace)
-To me, Soyo evokes “a world of simplicity and peace,” capturing the spirit of MACE-mh-1: simple in design,
-reliable in practice, and versatile in application.
-
-The main artitecture and idea is the same as MACE-mh-1, while simple attention, Equivariant RMSnorm, code modification for speed,
+The main artitecture and idea is the same as MACE-mh-1, while simple attention for edge_weight, Equivariant RMSnorm, code modification for speed,
 Spin&Charge embedding, heavier readout, Muon(optimizer) and WSD(schedule from DPA4) are added.
 Broadly speaking, MACE-SOYO offers an accuracy–speed trade-off between DPA4-Neo and DPA4-Mini.
 Training, AOTI export and inference require an NVIDIA CUDA GPU. CPU and other
@@ -21,7 +18,7 @@ Some minor bugs may still exist, it would be very appreciated if you report them
 
 Also, this code is inspired or inherited from several other superior potentials
 like Nequip, Nequix, DPA4 and EquflashV2. I give my special thank to those potentials' creators.
-Jia Jie Du offers me some useful advices and Prof.Liu offers the GPU resources to train. --Qi Ming Liang
+Jia-Jie Du gave some useful advices and Prof. Zhi-Pan Liu provided the GPU resources to train.
 
 ## Installation
 
@@ -34,17 +31,13 @@ python -m pip install -r requirements.txt
 
 ## Checkpoints
 
-The evaluated MPtraj checkpoint has one head, `mptraj`, and does not use
+The evaluated MPtraj checkpoint has only one head, `mptraj`, and does not use
 charge/spin conditioning. Download
 [`mace_soyo_mptraj.pth`](https://github.com/PrincessHakuryu/MACE-SOYO/releases/download/v0.1.0/mace_soyo_mptraj.pth)
 from the [v0.1.0 release](https://github.com/PrincessHakuryu/MACE-SOYO/releases/tag/v0.1.0)
-and save it as `checkpoints/mace_soyo_mptraj.pth`.
 
-SHA256: `d726daf370a92d280b75c72ca8a1551007946e00eb75a2fed6200547cd0a7de3`.
-
-The training checkpoint is a `.pth` file. ASE and TorchSim load an AOTI `.pt2`
+The provided training checkpoint is a `.pth` file. ASE and TorchSim load an AOTI `.pt2`
 package; follow the export example below on the intended inference GPU.
-An OAM checkpoint (OMat24 + sAlex/MPTrj, two heads) is planned for a separate release.
 
 A nine-head model trained on the full datasets may be released in the future:
 OMat24, sAlex + MPTrj, OC20, OC22, OC25, OMol25 + OPoly26, ODAC25, OMC25, and
@@ -52,8 +45,7 @@ MatPES-r2SCAN.
 
 ## Matbench-discovery results
 
-These are local evaluations, not yet an official Matbench Discovery leaderboard
-entry. Discovery metrics use the `unique_prototypes` subset; normalized RMSD uses
+Discovery metrics use the `unique_prototypes` subset; normalized RMSD uses
 `symprec=1e-2`. Combined scores use the current Matbench default weights.
 
 | Metric | MACE-MH-1 reference | MACE-SOYO MPtraj |
@@ -70,12 +62,10 @@ entry. Discovery metrics use the `unique_prototypes` subset; normalized RMSD use
 | CMDS (higher is better) | Not measured | 0.750 |
 | CDS (higher is better) | Not measured | 0.790 |
 
-Both models used the same fixed MPtraj train/validation split
-(`split_seed=42`), 100 epochs, and E:F:S loss weights of 1:1:1.
+Both models used the same fixed MPtraj train/validation split, 100 epochs, and E:F:S loss weights of 1:1:1.
 The MACE-MH-1 inference reference used cuEquivariance and `torch.compile`.
 Its training configuration is
-[`example/mace-mh1-mptraj.yml`](example/mace-mh1-mptraj.yml); replace the
-example paths with the prepared split and E0 JSON before use.
+[`example/mace-mh1-mptraj.yml`](example/mace-mh1-mptraj.yml).
 
 Evaluation settings:
 
@@ -85,7 +75,6 @@ Evaluation settings:
   `force_max=1e-4` eV/Angstrom and `max_steps=300`.
 - MACE-SOYO hardware: RTX 4090 for discovery/phonons; H200 NVL for MD/diatomics.
 
-Missing reference scores mean not measured, not zero.
 
 ## Training
 
@@ -291,13 +280,10 @@ sizes, including B=1 for ASE. `--max-graphs` defaults to 20000 and must be at
 least 2. Optional `--max-nodes` and `--max-edges` set upper bounds on atoms and
 directed edges.
 
-Throughout the model and its interfaces, `i, j = edge_index` means receiver
-and sender, respectively. The edge vector is `r_j - r_i + image @ cell`.
-
 One `.pt2` contains all heads and their names. Charge/spin inputs are included
 automatically when the checkpoint enables them. D3 is not embedded in the package.
 Export `--dtype` is independent of training `model_dtype`; its default remains
-`float32`, while E0 and output energies remain FP64.
+`float32`, while E0 and output energies remain FP64 for large energy of OMol dataset.
 AOTI packages target a particular hardware/runtime environment. Export on the
 intended inference GPU and use compatible PyTorch/CUDA/CUEQ versions. Do not
 assume that a package compiled for RTX 4090 is portable to H200; re-export the
@@ -480,13 +466,17 @@ CUDA_VISIBLE_DEVICES=0,1 OMP_NUM_THREADS=1 mpirun -np 2 lmp -k on g 2 -sf kk \
 ```
 ## Future plan
 
-Keep formalizing the code, and add long-range interactions with multipole_particle_mesh_ewald,
-providing BEC results.
+Keep formalizing the code, and add long-range interactions with multipole_particle_mesh_ewald.
 
 ## License
 
 MACE-SOYO's original code is licensed under the [MIT License](LICENSE).
 The v0.1.0 MPtraj model checkpoint is also released under the MIT License.
+
+Identified third-party code adaptations and their original MIT notices are listed
+in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). These notices are included in
+source distributions and wheels.
+
 The vendored sources in `other-modules/LASP-D3-torchsim/` are adapted from
 [LipidL/LASP-D3](https://github.com/LipidL/LASP-D3) for GPU-accelerated
 dispersion calculations in ASE and TorchSim.

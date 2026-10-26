@@ -6,6 +6,12 @@ local atomic energies. Hidden node features are exchanged between interaction
 layers with LAMMPS' differentiable Kokkos communication hooks.
 """
 
+# Feature-exchange portions adapted from NequIP (MIT).
+# Copyright (c) 2021 The President and Fellows of Harvard College
+# Copyright (c) 2025 The NequIP Developers
+# Source: nequip/nn/_ghost_exchange_lmp_mliap.py
+# See THIRD_PARTY_NOTICES.md and third-party-licenses/NequIP-LICENSE.txt.
+
 from __future__ import annotations
 
 from typing import Any

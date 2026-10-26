@@ -3,6 +3,10 @@
 https://github.com/ACEsuit/mace/blob/develop/mace/modules/blocks.py
 """
 
+# Portions adapted from ACEsuit/mace (MIT).
+# Copyright (c) 2022 ACEsuit/mace
+# See THIRD_PARTY_NOTICES.md and third-party-licenses/MACE-LICENSE.txt.
+
 import cuequivariance as cue
 import cuequivariance_torch as cuet
 import torch
