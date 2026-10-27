@@ -4,7 +4,7 @@
 # new names copy the sole old head, or specify finetune_head for a multihead source.
 num_heads: 2
 use_spin_charge: false
-readout_hidden: 32
+readout_hidden: 64
 datasets:
   - name: omat_pbe
     # finetune_head: omat_pbe  # Optional source head override when finetune is true.
