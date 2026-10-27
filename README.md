@@ -66,6 +66,7 @@ Both models used the same fixed MPtraj train/validation split, 100 epochs, and E
 The MACE-MH-1 inference reference used cuEquivariance and `torch.compile`.
 Its training configuration is
 [`example/mace-mh1-mptraj.yml`](example/mace-mh1-mptraj.yml).
+These benchmark results do not establish that MACE-SOYO is superior to MACE-MH-1 in all respects; broader evaluation is needed.
 
 Evaluation settings:
 
@@ -262,7 +263,8 @@ Charge must be an integer in [-100, 100] and spin in [1, 100].
 
 ## AOTI export
 
-Export a trained checkpoint using a representative structure (which can read by ASE):
+Export a trained checkpoint using structures which can read by ASE.
+export.arc is provided in example folder.
 
 ```bash
 python -m mace_soyo.export.AOTI_export \
@@ -285,8 +287,8 @@ automatically when the checkpoint enables them. D3 is not embedded in the packag
 Export `--dtype` is independent of training `model_dtype`; its default remains
 `float32`, while E0 and output energies remain FP64 for large energy of OMol dataset.
 AOTI packages target a particular hardware/runtime environment. Export on the
-intended inference GPU and use compatible PyTorch/CUDA/CUEQ versions. Do not
-assume that a package compiled for RTX 4090 is portable to H200; re-export the
+intended inference GPU and use compatible PyTorch/CUDA/CUEQ versions. DO NOT
+assume that a package exported for RTX 4090 is portable to H200; re-export the
 `.pth` checkpoint for the target GPU and check the E/F/S consistency results.
 
 ## ASE
