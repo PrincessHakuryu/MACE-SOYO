@@ -27,6 +27,12 @@ From the repository root:
 
 ```bash
 python -m pip install -r requirements.txt
+
+I recommend installing PyTorch(torch 2.12) separately first, choosing a CUDA build compatible with your NVIDIA driver.
+
+nvcc is NEEDED for AOTI export. Make sure you have it in environment.
+Type nvcc to check whether there is an output.
+
 ```
 
 ## Checkpoints
@@ -66,7 +72,7 @@ Both models used the same fixed MPtraj train/validation split, 100 epochs, and E
 The MACE-MH-1 inference reference used cuEquivariance and `torch.compile`.
 Its training configuration is
 [`example/mace-mh1-mptraj.yml`](example/mace-mh1-mptraj.yml).
-These benchmark results do not establish that MACE-SOYO is superior to MACE-MH-1 in all respects; broader evaluation is needed.
+These benchmark results DO NOT establish that MACE-SOYO is superior to MACE-MH-1 in all respects; broader evaluation is needed.
 
 Evaluation settings:
 
@@ -473,7 +479,7 @@ Keep formalizing the code, and add long-range interactions with multipole_partic
 ## License
 
 MACE-SOYO's original code is licensed under the [MIT License](LICENSE).
-The v0.1.0 MPtraj model checkpoint is also released under the MIT License.
+The v0.1 MPtraj model checkpoint is also released under the MIT License.
 
 Identified third-party code adaptations and their original MIT notices are listed
 in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). These notices are included in
