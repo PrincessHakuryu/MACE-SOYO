@@ -17,22 +17,19 @@ results are encouraging, this is the first time for me to complete such formal p
 Some minor bugs may still exist, it would be very appreciated if you report them. Thank You!
 
 Also, this code is inspired or inherited from several other superior potentials
-like Nequip, Nequix, DPA4 and EquflashV2. I give my special thank to those potentials' creators.
-Jia-Jie Du gave some useful advices and Prof. Zhi-Pan Liu provided the GPU resources to train.
+like Nequip, Nequix, DPA4 and EquflashV2. I give my special thank to those MLIAPs' creators.
 
 ## Installation
 
 Python >=3.12,<3.15 is required by the pinned dependencies.
 From the repository root:
-
-```bash
-python -m pip install -r requirements.txt
-
 I recommend installing PyTorch(torch 2.12) separately first, choosing a CUDA build compatible with your NVIDIA driver.
 
 nvcc is NEEDED for AOTI export. Make sure you have it in environment.
 Type nvcc to check whether there is an output.
 
+```bash
+python -m pip install -r requirements.txt
 ```
 
 ## Checkpoints
